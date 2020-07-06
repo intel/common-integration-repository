@@ -1,0 +1,14 @@
+- name: remove any existing labels
+  command: kubectl label node {{ item }} {{ node_label }}-
+  loop: "{{ groups[node_label] }}"
+  
+- name: label nodes based on inventory
+  command: kubectl label node {{ item }} {{ node_label }}=yes
+  register: label_output
+  failed_when: "'not labeled' in label_output"
+  loop: "{{ groups[node_label] }}"
+
+#- debug:
+#    msg: "nodes in {{ node_label }} are {{ item }}"
+#  loop: "{{ groups[node_label] }}"
+

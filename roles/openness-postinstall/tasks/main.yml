@@ -1,0 +1,173 @@
+---
+- name: install dependencies
+  include_role:
+    name: install-dependencies
+
+- name: update ulimits for docker daemon
+  replace:
+    path: "/etc/docker/daemon.json"
+    regexp: "{{ item.regex }}"
+    replace: "{{ item.replace }}"
+  with_items:
+    - { regex: "(.*Hard\":).*(,)$", replace: "\\1 65535\\2" }
+    - { regex: "(.*Soft\":).*$", replace: "\\1 65535" }
+
+- name: restart docker service
+  service:
+    name: docker
+    state: restarted
+    daemon_reload: yes
+
+- name: wait for kubernetes service to be accessible
+  wait_for:
+    port: 6443
+    delay: 10
+  when:
+    - inventory_hostname == groups['controller_group'][0]
+
+- name: clone and build Smart-City
+  import_role: 
+    name: smart-city-make
+  when: smtc_enabled
+
+- name: apply office labels to nodes based on inventory & group configuration
+  import_role:
+    name: k8s-labels
+  vars:
+    provided_labels: "{{ office_labels }}"
+  when:
+    - smtc_enabled
+    - inventory_hostname == groups['controller_group'][0]
+
+- name: delete OpenNESS network policies
+  command: kubectl delete netpol block-all-ingress
+  ignore_errors: yes
+  when:
+    - smtc_enabled
+    - inventory_hostname == groups['controller_group'][0]
+
+- name: attach office dataplane(s) to the cluster
+  command: "kubectl interfaceservice attach {{ item }} 0000:{{ hostvars[groups['edgenode_group'][(index)]]['office_dataplane_device'] }}"
+  loop: "{{ groups['edgenode_group'] }}"
+  loop_control:
+    index_var: index
+  when:
+    - smtc_enabled
+    - openness_external_dataplane
+    - inventory_hostname == groups['controller_group'][0]
+
+- name: re-enable dataplane interface
+  command: "ip link set {{ office_dataplane_interface }} up"
+  when:
+    - smtc_enabled
+    - openness_external_dataplane
+    - "'edgenode_group' in group_names"
+
+- set_fact:
+    camera_ip_list: []
+  when:
+    - smtc_enabled
+    - inventory_hostname == groups['controller_group'][0]
+
+- set_fact:
+    camera_ip_list: "{{ camera_ip_list + [ hostvars[groups['cameras'][(index)]]['ip'] ]}}"
+  loop: "{{ groups['cameras'] }}"
+  loop_control:
+    index_var: index
+  when:
+    - smtc_enabled
+    - not openness_external_dataplane
+    - inventory_hostname == groups['controller_group'][0]
+
+- set_fact:
+    camera_ip_list: "{{ camera_ip_list + [ hostvars[groups['cameras'][(index)]]['camera_ip'] ]}}"
+  loop: "{{ groups['cameras'] }}"
+  loop_control:
+    index_var: index
+  when:
+    - smtc_enabled
+    - openness_external_dataplane
+    - inventory_hostname == groups['controller_group'][0]
+
+- set_fact:
+    camera_ip_string: "{{ camera_ip_list | join(',') }}"
+  when:
+    - smtc_enabled
+    - inventory_hostname == groups['controller_group'][0]
+
+- name: export openness env vars
+  lineinfile:
+    path: /etc/environment
+    state: present
+    regexp: '^{{ item.name }}'
+    line: '{{ item.name }}={{ item.value }}'
+    create: yes
+    owner: root
+    group: root
+    mode: 0644
+  with_items:
+    - { name: "CAMERA_HOSTS", value: "{{ camera_ip_string }}" }
+    - { name: "CLOUD_HOST", value: "{{ hostvars[groups['kube-master'][0]]['ip'] }}" }
+  when:
+    - smtc_enabled
+    - inventory_hostname == groups['controller_group'][0]
+
+- name: start smart-city openness cloud pods
+  command: make start_openness_office
+  args:
+    chdir: "{{ smtc_dir }}/build"
+  when:
+    - smtc_enabled
+    - inventory_hostname == groups['controller_group'][0]
+
+- name: get generated openness pod names
+  command: kubectl get pods --namespace {{ item }}
+  register: generated_pods
+  with_items:
+    - "{{ system_namespace }}"
+    - "{{ ovn_namespace }}"
+    - "{{ openness_namespace }}"
+  when: 
+    - inventory_hostname == groups['controller_group'][0]
+
+- name: wait for pod {{ podName }} to become ready
+  command: kubectl wait --for=condition=ContainersReady pod/{{ podName | first }} --timeout=5s --namespace {{ system_namespace }}
+  register: ready_output
+  retries: 30
+  delay: 5
+  vars:
+    podName: "{{ item | regex_search('(\\S+-\\S+-\\S+)', '\\1') }}"
+  until: ("condition met" in ready_output.stdout)
+  with_items:
+    - "{{ generated_pods.results[0].stdout_lines }}"
+  when: 
+    - inventory_hostname == groups['controller_group'][0]
+    - podName != ""
+
+- name: wait for pod {{ podName }} to become ready
+  command: kubectl wait --for=condition=ContainersReady pod/{{ podName | first }} --timeout=5s --namespace {{ ovn_namespace }}
+  register: ready_output
+  retries: 30
+  delay: 5
+  vars:
+    podName: "{{ item | regex_search('(\\S+-\\S+-\\S+)', '\\1') }}"
+  until: ("condition met" in ready_output.stdout)
+  with_items:
+    - "{{ generated_pods.results[1].stdout_lines }}"
+  when: 
+    - inventory_hostname == groups['controller_group'][0]
+    - podName != ""
+
+- name: wait for pod {{ podName }} to become ready
+  command: kubectl wait --for=condition=ContainersReady pod/{{ podName | first }} --timeout=5s --namespace {{ openness_namespace }}
+  register: ready_output
+  retries: 30
+  delay: 5
+  vars:
+    podName: "{{ item | regex_search('(\\S+-\\S+-\\S+)', '\\1') }}"
+  until: ("condition met" in ready_output.stdout)
+  with_items:
+    - "{{ generated_pods.results[2].stdout_lines }}"
+  when: 
+    - inventory_hostname == groups['controller_group'][0]
+    - podName != ""

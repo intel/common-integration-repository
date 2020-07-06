@@ -1,0 +1,7 @@
+---
+- name: install k8s infrastructure 
+  import_playbook: bmra-current/playbooks/cluster.yml
+  when: bmra_current_enabled | default (false)
+
+- name: install Visual Cloud / Edge UseCases
+  import_playbook: usecase/usecases.yml

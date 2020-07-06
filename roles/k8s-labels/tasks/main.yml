@@ -1,0 +1,6 @@
+---
+- name: apply labels to nodes based on inventory configuration
+  include: k8s-labels.yml
+  loop: '{{ provided_labels }}'
+  loop_control:
+    loop_var: node_label

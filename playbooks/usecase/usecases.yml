@@ -1,0 +1,57 @@
+---
+# installs Visual Cloud and Edge Use Cases
+
+- hosts: k8s-cluster
+  tasks: []
+  roles:
+    - role: cluster-defaults
+      tags: defaults
+    - role: cdn-transcode-install
+      tags: cdn-install
+      when: cdn_transcode_enabled | default(false)
+    - role: ad-insertion-install
+      tags: ad-insert-install
+      when: ad_insertion_enabled | default(false) 
+    - role: smart-city-install
+      when: smtc_enabled | default(false)
+  environment: "{{ proxy_env | d({}) }}"
+
+- hosts: cameras
+  tasks: []
+  roles:
+    - role: cluster-defaults
+      tags: defaults
+    - role: smart-city-camera-net-config
+      when: openness_external_dataplane | default(false)
+    - role: smart-city-camera-init
+      when: openness_enabled | default(false)
+  environment: "{{ proxy_env | d({}) }}"
+
+- hosts: openness-cluster
+  tasks: []
+  roles:
+    - role: cluster-defaults
+      tags: defaults
+    - role: openness-preinstall
+      when: openness_enabled | default(false)
+  environment: "{{ proxy_env | d({}) }}"
+
+- hosts: localhost
+  connection: local
+  tasks: []
+  roles:
+    - role: cluster-defaults
+      tags: defaults
+    - role: openness-preconfigure-playbooks
+      when: openness_enabled | default(false)
+  environment: "{{ proxy_env | d({}) }}"
+
+- name: OpenNESS NE install (CURRENT)
+  import_playbook: "../openness-current/network_edge.yml"
+  when: openness_current_enabled | default (false)
+
+- hosts: openness-cluster
+  tasks: []
+  roles:
+    - role: openness-postinstall
+      when: openness_enabled | default(false)

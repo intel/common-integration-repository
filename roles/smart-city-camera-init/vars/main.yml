@@ -1,0 +1,8 @@
+---
+install_dependencies:
+  Debian:
+    - moreutils
+    - jq
+  RedHat:
+    - moreutils
+    - jq

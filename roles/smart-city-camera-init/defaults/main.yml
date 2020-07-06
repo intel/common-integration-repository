@@ -1,0 +1,14 @@
+---
+bmra_cur_dir: "bmra-current"
+bmra_next_dir: "bmra-next"
+#bmra_dir: "{%- if bmra_current_enabled -%}{{ bmra_cur_dir }}{%- elif bmra_next_enabled -%}{{ bmra_next_dir }}{%- endif -%}"
+bmra_dir: "bmra-next"
+bmra_bootstrap_role: "../{{ bmra_dir }}/roles/bootstrap"
+bmra_preconfigure_role: "../{{ bmra_cur_dir }}/roles"
+
+openness_cur_dir: "openness-current"
+openness_next_dir: "openness-next"
+#openness_dir: "{%- if openness_current_enabled -%}{{ openness_cur_dir }}{%- elif openness_next_enabled -%}{{ openness_next_dir }}{%- endif -%}"
+openness_dir: "openness-current"
+openness_docker_role: "../{{ openness_dir }}/roles/docker"
+

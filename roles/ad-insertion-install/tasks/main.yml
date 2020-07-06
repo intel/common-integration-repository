@@ -1,0 +1,179 @@
+---
+- name: install dependencies
+  include_role:
+    name: install-dependencies
+
+#version installed by ansible_pkg_mgr through install_dependencies is too old
+- name: install pexpect
+  pip:
+    name: "{{ pexpect_package }}"
+    state: present
+
+- name: clone Ad-Insertion repository
+  git:
+    repo: "{{ ad_insertion_git_url }}"
+    dest: "{{ ad_insertion_dir }}"
+    version: "{{ ad_insertion_version }}"
+    force: true
+
+- name: create Ad-Insertion build directory
+  file:
+    path: "{{ ad_insertion_dir }}/build"
+    state: directory
+
+- name: update docker image build user
+  lineinfile:
+    dest: "{{ ad_insertion_dir }}/script/build.sh"
+    regexp: 'USER=(\".*\")'
+    line: 'USER="{{ ad_insertion_user }}"'
+    state: present
+
+- name: patch docker build TTY cmd line args (TEMP WORKAROUND)
+  replace:
+    path: "{{ ad_insertion_dir }}/script/build.sh"
+    regexp: "(.*)-t(.*)$"
+    replace: "\\1--progress=plain -t\\2"
+
+- name: patch docker run/exec TTY cmd line args (TEMP WORKAROUND)
+  replace:
+    path: "{{ ad_insertion_dir }}/script/shell.sh"
+    regexp: "(.*)-it(.*)$"
+    replace: "\\1-i\\2"
+
+- name: configure Ad-Insertion makefiles
+  command: "cmake {{ ad_insertion_dir }}"
+  args:
+    chdir: "{{ ad_insertion_dir }}/build"
+
+- name: build ad_insertion images
+  make:
+    chdir: "{{ ad_insertion_dir }}/build"
+
+- name: update service-node-port-range in /etc/kubernetes/manifests/kube-apiserver.yaml
+  lineinfile:
+    dest: /etc/kubernetes/manifests/kube-apiserver.yaml
+    regexp: '    - --service-node-port-range=(.*-)(.*)'
+    line: '    - --service-node-port-range={{ ad_insertion_service_node_port_range }}'
+    state: present
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: restart kubelet service
+  command: systemctl restart kubelet
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: sleep for 30 seconds to allow kubelet time to restart
+  wait_for:
+    timeout: 30
+  delegate_to: localhost
+
+########################TBD - use existing makefiles ATM############################################
+#- name: Update k8s yaml files
+#  include: "ad-insert-yaml-updates.yml"
+#  when:
+#    - inventory_hostname == groups['kube-master'][0]
+
+#- name: create ad-insertion k8s ssl secrets object
+#  k8s:
+#    state: present
+#    src: "{{ ad_insertion_k8s_dir }}/{{ ad_insertion_ssl_cert_yaml }}"
+#    namespace: "{{ ad_insertion_namespace }}"
+#  when: 
+#    - inventory_hostname == groups['kube-master'][0]
+
+#- name: create ad-insertion k8s service objects
+#  k8s:
+#    state: present
+#    src: "{{ ad_insertion_k8s_dir }}/{{ item }}"
+#    namespace: "{{ ad_insertion_namespace }}"
+#  with_items:
+#    - "{{ ad_cdn_service_yaml }}"
+#    - "{{ ad_cp_service_yaml }}"
+#    - "{{ ad_cp_transcode_service_yaml }}"
+#    - "{{ ad_kafka_service_yaml }}"
+#    - "{{ ad_kafka_init_service_yaml }}"
+#    - "{{ ad_zookeeper_service_yaml }}"
+#    - "{{ ad_analytic_gstreamer_service_yaml }}"
+#    - "{{ ad_analytic_ffmpeg_service_yaml }}"
+#    - "{{ ad_analytic_db_service_yaml }}"
+#    - "{{ ad_content_service_yaml }}"
+#    - "{{ ad_decision_service_yaml }}"
+#    - "{{ ad_insertion_service_yaml }}"
+#    - "{{ ad_transcode_service_yaml }}"
+#    - "{{ ad_account_service_yaml }}"
+#    - "{{ ad_els_db_service_yaml }}"
+#  when: 
+#    - inventory_hostname == groups['kube-master'][0]
+
+#- name: create net-attach-def object for flannel overlay network
+#  k8s_raw:
+#    state: present
+#    definition: "{{ lookup('file', '../templates/flannel-network.yaml') | from_yaml }}"
+#  when:
+#    - inventory_hostname == groups['kube-master'][0]
+
+#- name: create ad-insertion k8s pods
+#  k8s:
+#    state: present
+#    src: "{{ ad_insertion_k8s_dir }}/{{ item }}"
+#    namespace: "{{ ad_insertion_namespace }}"
+#  with_items:
+#    - "{{ ad_cdn_deploy_yaml }}"
+#    - "{{ ad_cp_deploy_yaml }}"
+#    - "{{ ad_cp_transcode_deploy_yaml }}"
+#    - "{{ ad_kafka_deploy_yaml }}"
+#    - "{{ ad_kafka_init_deploy_yaml }}"
+#    - "{{ ad_zookeeper_deploy_yaml }}"
+#    - "{{ ad_analytic_gstreamer_deploy_yaml }}"
+#    - "{{ ad_analytic_ffmpeg_deploy_yaml }}"
+#    - "{{ ad_analytic_db_deploy_yaml }}"
+#    - "{{ ad_content_deploy_yaml }}"
+#    - "{{ ad_decision_deploy_yaml }}"
+#    - "{{ ad_insertion_deploy_yaml }}"
+#    - "{{ ad_transcode_deploy_yaml }}"
+#    - "{{ ad_account_deploy_yaml }}"
+#    - "{{ ad_els_db_service_yaml }}"
+#  when: 
+#    - inventory_hostname == groups['kube-master'][0]
+###########################################################################################
+
+
+- name: configure ad-insertion volumes
+  expect:
+    command: make volume
+    responses:
+      Are you sure you want to continue(.*): "yes"
+    chdir: "{{ ad_insertion_dir }}/build"
+    timeout: 15
+  register: expect_output
+  failed_when: "'Built target volume' not in expect_output.stdout"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: start ad-insertion pods
+  command: make start_kubernetes
+  args:
+    chdir: "{{ ad_insertion_dir }}/build"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: get generated ad-insertion pod names
+  command: kubectl get pods --namespace {{ ad_insertion_namespace }}
+  register: generated_pods
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: wait for pod {{ podName }} to become ready
+  command: kubectl wait --for=condition=ContainersReady pod/{{ podName | first }} --timeout=5s --namespace {{ ad_insertion_namespace }}
+  register: ready_output
+  retries: 12
+  delay: 5
+  vars:
+    podName: "{{ item | regex_search('(\\S+-\\S+-\\S+)', '\\1') }}"
+  until: ("condition met" in ready_output.stdout)
+  with_items: 
+    - "{{ generated_pods.stdout_lines }}"
+  when: 
+    - inventory_hostname == groups['kube-master'][0]
+    - podName != ""

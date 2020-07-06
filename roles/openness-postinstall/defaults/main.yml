@@ -1,0 +1,4 @@
+---
+openness_namespace: "openness"
+system_namespace: "kube-system"
+ovn_namespace: "kube-ovn"

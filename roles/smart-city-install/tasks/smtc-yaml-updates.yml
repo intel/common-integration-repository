@@ -1,0 +1,74 @@
+---
+- name: add namespace identifier
+  replace:
+    path: "{{ yaml_file.path }}"
+    regexp: '^spec:'
+    replace: '  namespace: {{ smtc_namespace }}\nspec:'
+
+########TODO#########
+#- name: update node selector
+#  lineinfile:
+#    dest: "{{ yaml_file.path }}"
+#    regexp: '        kubernetes.io/hostname: (.*)'
+#    line: '        kubernetes.io/hostname: {{ groups["kube-node"][0] }}'
+#    state: present
+#################
+
+- name: add SRIOV network annotations
+  lineinfile:
+    dest: "{{ yaml_file.path }}"
+    line: "{{ item }}"
+    insertbefore: '\s\s\s\sspec:'
+  with_items:
+    - "{{ net_annotation_lines }}"
+  when:
+    - sriov_net_dp_enabled
+    - "'office-db-' not in yaml_file.path"
+
+- name: add OfficeDB network annotations
+  lineinfile:
+    dest: "{{ yaml_file.path }}"
+    line: "{{ item }}"
+    insertbefore: '^spec:'
+  with_items:
+    - "{{ office_db_annotation_lines }}"
+  when:
+    - sriov_net_dp_enabled
+    - "'office-db-' in yaml_file.path"
+
+- name: check if resource header exists
+  lineinfile:
+    dest: "{{ yaml_file.path }}"
+    regexp: '^\s+resources:'
+    state: absent
+  check_mode: yes
+  changed_when: false
+  register: resource_header
+  when:
+    - sriov_net_dp_enabled
+
+- name: add resource headers if missing from file
+  lineinfile:
+    dest: "{{ yaml_file.path }}"
+    line: "{{ item }}"
+    insertbefore: '\s\s\s\s\s\s\s\s\s\senv:'
+  with_items:
+    - "{{ resource_header_lines }}"
+  when:
+    - sriov_net_dp_enabled
+    - not resource_header.found
+
+- name: add SRIOV VF limits and requests
+  lineinfile:
+    dest: "{{ yaml_file.path }}"
+    line: "                intel.com/intel_sriov_netdevice: {{ item.count }}"
+    insertafter: "{{ item.regex }}"
+  with_items: 
+    - 
+      count: "'1'"
+      regex: "\\s+limits:"
+    - 
+      count: "\"1\""
+      regex: "\\s+requests:"
+  when:
+    - sriov_net_dp_enabled

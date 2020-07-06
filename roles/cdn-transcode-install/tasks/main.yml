@@ -1,0 +1,154 @@
+---
+- name: install dependencies
+  include_role:
+    name: install-dependencies
+
+- set_fact:
+    deploy_all_list: []
+    service_all_list: [
+        "{{ cdn_transcode_service_yaml }}",
+        "{{ cdn_kafka_service_yaml }}",
+        "{{ cdn_redis_service_yaml }}",
+        "{{ cdn_zookeeper_service_yaml }}"
+      ]
+    deploy_cdn_list: [
+        "{{ cdn_transcode_deploy_yaml }}",
+        "{{ cdn_vod_deploy_yaml }}",
+        "{{ cdn_live_deploy_yaml }}"
+      ]
+    deploy_background_list: [
+        "{{ cdn_kafka_deploy_yaml }}",
+        "{{ cdn_redis_deploy_yaml }}",
+        "{{ cdn_zookeeper_deploy_yaml }}"
+      ]
+
+- set_fact:
+    deploy_all_list: "{{ deploy_all_list }} + [ '{{ item }}' ]"
+  with_items:
+    - "{{ deploy_background_list }}"
+    - "{{ deploy_cdn_list }}"
+
+- name: clone CDN-Transcode repository
+  git:
+    repo: "{{ cdn_transcode_git_url }}"
+    dest: "{{ cdn_transcode_dir }}"
+    version: "{{ cdn_transcode_version }}"
+    force: true
+
+- name: create cdn_transcode build directory
+  file:
+    path: "{{ cdn_transcode_dir }}/build"
+    state: directory
+
+- name: patch docker build TTY cmd line args (TEMP WORKAROUND)
+  replace:
+    path: "{{ cdn_transcode_dir }}/script/build.sh"
+    regexp: "(.*)-t(.*)$"
+    replace: "\\1--progress=plain -t\\2"
+
+- name: patch docker run/exec TTY cmd line args (TEMP WORKAROUND)
+  replace:
+    path: "{{ cdn_transcode_dir }}/script/shell.sh"
+    regexp: "(.*)-it(.*)$"
+    replace: "\\1-i\\2"
+
+- name: patch docker-compose-template version (TEMP WORKAROUND)
+  replace:
+    path: "{{ cdn_transcode_k8s_dir }}/docker-compose-template.yml"
+    regexp: "(version:).*$"
+    replace: "\\1 \"3\""
+
+- name: configure cdn_transcode makefiles
+  command: "cmake {{ cdn_transcode_dir }}"
+  args:
+    chdir: "{{ cdn_transcode_dir }}/build"
+
+- name: build cdn_transcode images
+  make:
+    chdir: "{{ cdn_transcode_dir }}/build"
+
+- name: install nfs-server
+  command: ./nfs_setup.sh
+  args:
+    chdir: "{{ cdn_transcode_dir }}/script"
+  when:
+    - inventory_hostname == groups['kube-node'][0]
+
+- name: update service-node-port-range in /etc/kubernetes/manifests/kube-apiserver.yaml
+  lineinfile:
+    dest: /etc/kubernetes/manifests/kube-apiserver.yaml
+    regexp: '    - --service-node-port-range=(.*-)(.*)'
+    line: '    - --service-node-port-range={{ cdn_transcode_service_node_port_range }}'
+    state: present
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: restart kubelet service
+  command: systemctl restart kubelet
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: sleep for 30 seconds to allow kubelet time to restart
+  wait_for:
+    timeout: 30
+  delegate_to: localhost
+
+- name: Generate k8s yaml files
+  include: "cdn-yaml-generation.yml"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: create cdn k8s service objects
+  command: "kubectl create -f {{ cdn_transcode_k8s_dir }}/{{ item }} -n {{ cdn_transcode_namespace }}"
+  with_items:
+    - "{{ service_all_list }}"
+  when: 
+    - cdn_transcode_enabled 
+    - inventory_hostname == groups['kube-master'][0]
+
+#- name: create net-attach-def object for flannel overlay network
+#  k8s_raw:
+#    state: present
+#    definition: "{{ lookup('file', '../templates/flannel-network.yaml') | from_yaml }}"
+#  when:
+#    - cdn_transcode_enabled 
+#    - inventory_hostname == groups['kube-master'][0]
+
+- name: create cdn k8s pods
+  command: "kubectl create -f {{ cdn_transcode_k8s_dir }}/{{ item }} -n {{ cdn_transcode_namespace }}"
+  with_items:
+    - "{{ deploy_background_list }}"
+    - "{{ cdn_transcode_deploy_yaml }}"
+    - "vod0{{ cdn_generic_deploy_yaml }}"
+  when: 
+    - cdn_transcode_enabled 
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: get generated cdn pod names
+  command: kubectl get pods --namespace {{ cdn_transcode_namespace }}
+  register: generated_pods
+  when:
+    - cdn_transcode_enabled
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: wait for pod {{ podName }} to become ready
+  command: kubectl wait --for=condition=ContainersReady pod/{{ podName | first }} --timeout=5s --namespace {{ cdn_transcode_namespace }}
+  register: ready_output
+  retries: 12
+  delay: 5
+  vars:
+    podName: "{{ item | regex_search('(\\S+-service-\\S+)', '\\1') }}"
+  until: ("condition met" in ready_output.stdout)
+  with_items: 
+    - "{{ generated_pods.stdout_lines }}"
+  when: 
+    - cdn_transcode_enabled 
+    - inventory_hostname == groups['kube-master'][0]
+    - podName != ""
+
+- name: create live0 k8s pod
+  command: "kubectl create -f {{ cdn_transcode_k8s_dir }}/live0{{ cdn_generic_deploy_yaml }} -n {{ cdn_transcode_namespace }}"
+  when: 
+    - cdn_transcode_enabled 
+    - inventory_hostname == groups['kube-master'][0]
+

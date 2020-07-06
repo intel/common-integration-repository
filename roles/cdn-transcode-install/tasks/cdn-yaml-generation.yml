@@ -1,0 +1,228 @@
+---
+#- name: generate k8s yaml from docker-compose template
+#  command: kompose convert -f docker-compose-template.yml
+#  args:
+#    chdir: "{{ cdn_transcode_k8s_dir }}"
+
+- name: update cpu resource quotas
+  replace:
+    path: "{{ cdn_transcode_k8s_dir }}/{{ item.file }}"
+    regexp: '            cpu: (.+)'
+    replace: '            cpu: {{ item.cpur }}'
+  with_items:
+    - { file: "{{ cdn_transcode_deploy_yaml }}", cpur: "{{ cdn_cpu_request_quota }}" }
+    - { file: "{{ cdn_kafka_deploy_yaml }}", cpur: "{{ cdn_kafka_cpu_request_quota }}" }
+    - { file: "{{ cdn_redis_deploy_yaml }}", cpur: "{{ cdn_redis_cpu_request_quota }}" }
+    - { file: "{{ cdn_vod_deploy_yaml }}", cpur: "{{ cdn_vod_cpu_request_quota }}" }
+    - { file: "{{ cdn_zookeeper_deploy_yaml }}", cpur: "{{ cdn_zookeeper_cpu_request_quota }}" }
+    - { file: "{{ cdn_live_deploy_yaml }}", cpur: "{{ cdn_live_cpu_request_quota }}" }
+
+- name: update memory resource quotas
+  replace:
+    path: "{{ cdn_transcode_k8s_dir }}/{{ item.file }}"
+    regexp: '            memory: (.+)'
+    replace: '            memory: {{ item.memr }}'
+  with_items:
+    - { file: "{{ cdn_transcode_deploy_yaml }}", memr: "{{ cdn_mem_request_quota }}" }
+    - { file: "{{ cdn_kafka_deploy_yaml }}", memr: "{{ cdn_kafka_mem_request_quota }}" }
+    - { file: "{{ cdn_redis_deploy_yaml }}", memr: "{{ cdn_redis_mem_request_quota }}" }
+    - { file: "{{ cdn_vod_deploy_yaml }}", memr: "{{ cdn_vod_mem_request_quota }}" }
+    - { file: "{{ cdn_zookeeper_deploy_yaml }}", memr: "{{ cdn_zookeeper_mem_request_quota }}" }
+    - { file: "{{ cdn_live_deploy_yaml }}", memr: "{{ cdn_live_mem_request_quota }}" }
+
+- name: update node selector
+  lineinfile:
+    dest: "{{ cdn_transcode_k8s_dir }}/{{ item }}"
+    regexp: '        kubernetes.io/hostname: (.*)'
+    line: '        kubernetes.io/hostname: {{ groups["ovc-cdn"][0] }}'
+    state: present
+  with_items:
+    - "{{ deploy_all_list }}"    
+
+- name: add volume mounts
+  blockinfile:
+    dest: "{{ cdn_transcode_k8s_dir }}/{{ item }}"
+    insertbefore: "      nodeSelector:"
+    marker: ""
+    block: |2
+              volumeMounts:
+              - name: archive
+                mountPath: /var/www/archive
+                readOnly: false
+              - name: dash
+                mountPath: /var/www/dash
+                readOnly: false
+              - name: hls
+                mountPath: /var/www/hls
+                readOnly: false
+  with_items:
+    - "{{ deploy_cdn_list }}"
+
+- name: add additional cdn volume mounts
+  blockinfile:
+    dest: "{{ cdn_transcode_k8s_dir }}/{{ cdn_transcode_deploy_yaml }}"
+    insertbefore: "      nodeSelector:"
+    marker: ""
+    block: |2
+              - name: html
+                mountPath: /var/www/html
+                readOnly: true
+              - name: secrets
+                mountPath: /var/run/secrets
+                readOnly: true
+
+#TODO - Add HW flags
+- name: add ffmpeg args to live service
+  blockinfile:
+    dest: "{{ cdn_transcode_k8s_dir }}/{{ cdn_live_deploy_yaml }}"
+    insertbefore: "      nodeSelector:"
+    marker: ""
+    block: |2
+              args:
+              - bash
+              - -c
+              - ffmpeg -re -stream_loop -1 -i /var/www/archive/{{ cdn_live_file }}
+                -vf scale={{ cdn_live_resolution }} -c:v {{ cdn_live_codec }} -b:v {{ cdn_live_bitrate }}M -g 32 -forced-idr 1 -an -f flv rtmp://cdn-service/{{ cdn_live_protocol }}/output_name_0_0
+                -abr_pipeline
+
+- name: add volumes
+  blockinfile:
+    dest: "{{ cdn_transcode_k8s_dir }}/{{ item }}"
+    insertbefore: "      nodeSelector:"
+    marker: ""
+    block: |2
+            volumes:
+            - name: archive
+              nfs:
+                path: {{ cdn_transcode_dir }}/volume/video/archive
+                server: {{ hostvars[groups['ovc-nfs-server'][0]]['ansible_default_ipv4']['address'] }}
+            - name: dash
+              nfs:
+                path: {{ cdn_transcode_dir }}/volume/video/dash
+                server: {{ hostvars[groups['ovc-nfs-server'][0]]['ansible_default_ipv4']['address'] }}
+            - name: hls
+              nfs:
+                path: {{ cdn_transcode_dir }}/volume/video/hls
+                server: {{ hostvars[groups['ovc-nfs-server'][0]]['ansible_default_ipv4']['address'] }}
+  with_items:
+    - "{{ deploy_cdn_list }}"
+
+- name: add additional cdn volumes
+  blockinfile:
+    dest: "{{ cdn_transcode_k8s_dir }}/{{ cdn_transcode_deploy_yaml }}"
+    insertbefore: "      nodeSelector:"
+    marker: ""
+    block: |2
+            - name: html 
+              nfs:
+                path: {{ cdn_transcode_dir }}/volume/html
+                server: {{ hostvars[groups['ovc-nfs-server'][0]]['ansible_default_ipv4']['address'] }}
+            - name: secrets
+              secret:
+                secretName: self-signed-certificate
+
+- name: cleanup whitespace 
+  lineinfile:
+    dest: "{{ cdn_transcode_k8s_dir }}/{{ item }}"
+    regexp: '^$'
+    state: absent
+  with_items:
+    - "{{ deploy_cdn_list }}"
+
+- name: add nodePort to cdn service yaml
+  lineinfile:
+    dest: "{{ cdn_transcode_k8s_dir }}/{{ cdn_transcode_service_yaml }}"
+    insertafter: '    targetPort: 8080'
+    line: '    nodePort: 443'
+
+#TODO
+#- name: add gpu resource limits if hw defined
+
+- name: generate ssl keys 
+  command: "{{ cdn_transcode_cert_dir }}/self-sign.sh"
+  register: output
+
+- name: delete ssl certificate
+  shell: 'kubectl delete secret self-signed-certificate'
+  args:
+    chdir: "{{ cdn_transcode_cert_dir }}"
+  ignore_errors: True
+
+- name: create ssl certificate
+  shell: 'kubectl create secret generic self-signed-certificate --from-file="{{ cdn_transcode_cert_dir }}/self.crt" --from-file="{{ cdn_transcode_cert_dir }}/self.key"'
+  args:
+    chdir: "{{ cdn_transcode_cert_dir }}"
+
+#- name: add namespace identifier
+#  lineinfile:
+#    dest: "{{ cdn_transcode_k8s_dir }}/{{ item }}"
+#    line: '  namespace: {{ cdn_transcode_namespace }}'
+#    insertbefore: '\s+creationTimestamp:.*'
+#    firstmatch: yes 
+#  with_items:
+#    - "{{ service_all_list }}"
+#    - "{{ deploy_all_list }}"
+
+- set_fact:
+    net_annotation_lines: []
+
+- set_fact:
+    net_annotation_lines: "{{ net_annotation_lines }} + [ '{{ item }}' ]"
+  with_items:
+    - "      annotations:"
+    - "        k8s.v1.cni.cncf.io/networks: \\'["
+    - "              { \"name\": \"flannel-net\" },"
+    - "              { \"name\": \"sriov-net\" }"
+    - "        ]\\'"
+
+#- name: add SRIOV network annotations
+#  lineinfile:
+#    dest: "{{ cdn_transcode_k8s_dir }}/{{ item[0] }}"
+#    line: "{{ item[1] }}"
+#    insertbefore: '\s+labels:'
+#  with_nested:
+#    - "{{ deploy_all_list }}"
+#    - "{{ net_annotation_lines }}"
+#  when:
+#    - sriov_net_dp_enabled
+
+#- name: add SRIOV VF limits and requests
+#  lineinfile:
+#    dest: "{{ cdn_transcode_k8s_dir }}/{{ item[0] }}"
+#    line: "            intel.com/intel_sriov_netdevice: {{ item[1].count }}"
+#    insertafter: "{{ item[1].regex }}"
+#  with_nested:
+#    - "{{ deploy_all_list }}"
+#    - [
+#        { regex: '\s+limits:', count: "\\'1\\'" },
+#        { regex: '\s+requests:', count: "\"1\"" }
+#      ]
+#  when: 
+#    - sriov_net_dp_enabled
+
+#TODO - Make dynamic based on node count?  pod count?
+- name: rename live and vod service files
+  copy:
+    src: "{{ cdn_transcode_k8s_dir }}/{{ item }}{{ cdn_generic_deploy_yaml }}"
+    dest: "{{ cdn_transcode_k8s_dir }}/{{ item }}0{{ cdn_generic_deploy_yaml }}"
+    remote_src: yes
+  with_items:
+    - "live"
+    - "vod"
+
+- name: update live and vod service identifiers
+  replace:
+    path: "{{ cdn_transcode_k8s_dir }}/{{ item }}0{{ cdn_generic_deploy_yaml }}"
+    regexp: '{{ item }}-service'
+    replace: "{{ item }}0-service-deployment"
+  with_items:
+    - "live"
+    - "vod"
+
+- name: remove old files
+  file:
+    path: "{{ cdn_transcode_k8s_dir }}/{{ item }}{{ cdn_generic_deploy_yaml }}"
+    state: absent 
+  with_items:
+    - "live"
+    - "vod"

@@ -1,0 +1,10 @@
+---
+install_dependencies:
+  Debian:
+    - git
+    - make
+    - cmake
+  RedHat:
+    - git
+    - make
+    - cmake
