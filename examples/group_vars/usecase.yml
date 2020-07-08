@@ -8,7 +8,7 @@ pexpect_package: "pexpect=={{ pexpect_version }}"
 # CDN-Transcode
 cdn_transcode_enabled: false
 cdn_transcode_namespace: default
-cdn_transcode_version: master
+cdn_transcode_version: c45c8b666b9bf704299d65bfe91613b16fbef539
 cdn_primary_vod_service_deploy: true
 cdn_secondary_vod_service_deploy: false
 cdn_vod_transcode_mode: sw
