@@ -19,6 +19,7 @@ Copyright (c) 2020 Intel Corporation
    - [Check Kubernetes cluster of BMRA](#check-kubernetes-cluster-of-bmra)
    - [Check Cluster of Openness subsystem](#check-cluster-of-openness-subsystem)
    - [Check kubernetes Cluster of Use case](#check-kubernetes-cluster-of-use-case)
+- [Known issues](#known-issues)
 - [Requirements](#requirements)
 - [Reference](#reference)
 
@@ -127,6 +128,11 @@ Typical repice will be shown in following [Use case](#use-case) in details.
    ```
     # git submodule update --init --recursive
    ```
+7. Update multus plugin file, which is temporary WA here because. "Multus plugin" task file has a typo error in Kubespray* source code which is not merged to kubespray v1.16 branch. This issue will be fixed in next CIR release.
+   ```
+    # cd playbooks/bmra-current/playbooks/k8s/kubespray
+    # git cherry-pick 2ab5cc73cd3e2342660b54b2fb4d028d46693d48
+   ```   
 
 ## BMRA Deployment
 1. Edit `inventory.ini` to reflect correct master and nodes IP.
@@ -512,6 +518,10 @@ This section shows how to verify all the components deployed by the scripts. All
    default	traffic-office2-where-indexing-54fdb7f6f9-db2vh	Running
    ```
 2. Open the URL `https://master_ip` in Chrome, we can see all sensors and all analytics are available in the web.
+
+# Known issues
+* Multus plugin typo issue in BMRA/K8S/kubespray, which need WA manually. This issue will be fixed in next release
+* CDN version is suggested to use c45c8b666b9bf704299d65bfe91613b16fbef539 in this release. Other tag or version will be supported in next release.
 
 # Requirements
 * Python 2 present on the target servers.
