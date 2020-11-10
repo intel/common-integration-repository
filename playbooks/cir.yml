@@ -1,7 +1,12 @@
 ---
-- name: install k8s infrastructure 
-  import_playbook: bmra-current/playbooks/cluster.yml
-  when: bmra_current_enabled | default (false)
+#Requires an intel gitlab account and access to repo
+- name: install orchestration environment(s) 
+  import_playbook: orchestration/orchestration.yml
 
-- name: install Visual Cloud / Edge UseCases
+- name: install sample workload(s)
   import_playbook: usecase/usecases.yml
+  when: 
+    - cdn_transcode_enabled is defined or
+      ad_insertion_enabled is defined or
+      smtc_enabled is defined or
+      vcmts_enabled is defined

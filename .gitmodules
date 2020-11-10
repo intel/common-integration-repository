@@ -1,7 +1,7 @@
-[submodule "playbooks/bmra-current"]
-	path = playbooks/bmra-current
+[submodule "playbooks/orchestration/bmra-current"]
+	path = playbooks/orchestration/bmra-current
 	url = https://github.com/intel/container-experience-kits.git
-	branch = kubernetes-1.16
-[submodule "playbooks/openness-current"]
-	path = playbooks/openness-current
+        branch = release-v2.0
+[submodule "playbooks/orchestration/openness-current"]
+	path = playbooks/orchestration/openness-current
 	url = https://github.com/open-ness/openness-experience-kits.git

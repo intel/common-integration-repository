@@ -1,0 +1,35 @@
+---
+## Workload playbook variables ##
+
+# General
+pexpect_version: "3.3"
+pexpect_package: "pexpect=={{ pexpect_version }}"
+
+#vCMTS
+vcmts_enabled: true
+#kubernetes or baremetal
+vcmts_env_type: kubernetes
+#vcmts node domain
+vcmts_domain: example.com
+#max-load or low-speed
+vcmts_mode: max-load
+#number of service-groups (4 or 8)
+vcmts_service_groups: 4
+#100,300,500,or 1000 subscribers per service group
+vcmts_subscribers: 300
+#baremetal only (max load: 2us_1ds, 1us_1ds, us2_ds2) (low speed: 4us_2ds, 2us_2ds)
+vcmts_core_config: 2us_1ds
+#1ofdm, 2ofdm, 4ofdm, 6ofdm
+vcmts_channel_config: 4ofdm
+#aes|off (1ofdm: 5pc-des, 10pc-des, off)
+vcmts_crypto_config: aes
+#CRC regeneration for DS DOCSIS frames (enabled, disabled)
+vcmts_crc: enabled
+#QAT offload for DS encryption (space seperated list of service group IDs)
+vcmts_crypto_offload: "''"
+#CPU cycle count stats capture per service group (space seperated list of service group IDs)
+vcmts_cpu_cycle_stats: "''"
+#Latency stats capture per service group (space seperated list of service group IDs)
+vcmts_latency_stats: "''"
+#Cable traffic type (imix1, imix2, 64B, 256B, 512B, 640B, 768B, 1024B, 1280B, 1536B)
+vcmts_traffic_type: imix2

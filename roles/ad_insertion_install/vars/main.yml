@@ -1,0 +1,9 @@
+---
+install_dependencies:
+  Debian:
+    - make
+    - cmake
+    - m4
+  RedHat:
+    - make
+    - cmake

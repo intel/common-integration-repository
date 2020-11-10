@@ -1,0 +1,52 @@
+---
+- name: remove --name when helm install
+  replace:
+    path: "/opt/vcmts/tools/vcmts-pm/vcmts_pm_helm.py"
+    regexp: "(.*)helm install --name(.*)"
+    replace: "\\1helm install \\2"
+
+- name: update infra helm install
+  replace:
+    path: "/opt/vcmts/tools/vcmts-pm/vcmts_pm_helm.py"
+    regexp: "(.*)--wait --timeout 600'(.*)"
+    replace: "\\1--wait --timeout 600s'\\2"
+
+- name: create crd folder 
+  file:
+    path: /opt/vcmts/kubernetes/helm/vcmts-infra/crds
+    state: directory
+
+- name: copy crd files to crds folder 
+  template:
+    src: vcmts-crd.yaml
+    dest: /opt/vcmts/kubernetes/helm/vcmts-infra/crds/vcmts-crd.yaml
+
+- name: copy network files to template folder
+  template:
+    src: networks.yaml
+    dest: /opt/vcmts/kubernetes/helm/vcmts-infra/templates/networks.yaml
+
+- name: update cmk version in cmk-cluster-init-pod.yaml
+  replace:
+    path: "{{ vcmts_src_dir }}vcmts/kubernetes/cmk/cmk-cluster-init-pod.yaml"
+    regexp: '^(.*cmk:)v1.3.1(.*$)'
+    replace: '\1{{ cmk_version }}\2'
+
+- name: update hostlist in cmk-cluster-init-pod.yaml
+  replace:
+    path: "{{ vcmts_src_dir }}vcmts/kubernetes/cmk/cmk-cluster-init-pod.yaml"
+    regexp: "^(.*){{ groups['dp'][0] }}.{{ vcmts_domain }}(.*$)"
+    replace: "\\1{{ groups['dp'][0] }}\\2"
+
+- name: copy cmk rbac rules yaml to node
+  get_url:
+    url: "{{ cmk_rbac_url }}"
+    dest: "{{ vcmts_src_dir }}vcmts/kubernetes/cmk/cmk-rbac-rules.yaml"
+    force: yes
+
+- name: update cmk rbac rules yaml namespace
+  replace:
+    path: "{{ vcmts_src_dir }}vcmts/kubernetes/cmk/cmk-rbac-rules.yaml"
+    regexp: '^(.*namespace: )cmk-namespace'
+    replace: '\1{{ vcmts_namespace }}'
+

@@ -1,0 +1,66 @@
+---
+- name: start infra for baremetal
+  expect:
+    command: /bin/bash -c "source /opt/vcmts/tools/vcmts-env/env.sh && source env/bin/activate && vcmts-pm infra-start && deactivate"
+    responses:
+      'Do you need to re-configure pktgen ports \(required after vcmts-pm config-service-groups\) \? \[y/N\]:': 'y'
+      'Do you need to re-configure vcmtsd ports \(required after vcmts-pm config-service-groups\) \? \[y/N\]:': 'y'
+    chdir: "/opt/vcmts/tools/vcmts-pm"
+    echo: yes
+    timeout: 120
+  register: infra_output
+  when:
+    - vcmts_env_type == "baremetal"
+    - "'tg' in group_names"
+
+- name: apply cmk rbac rules
+  k8s_raw:
+    state: present
+    src: /opt/vcmts/kubernetes/cmk/cmk-rbac-rules.yaml
+  when:
+    - vcmts_env_type == "kubernetes"
+    - "'tg' in group_names"
+
+- name: start infra for kubernetes
+  expect:
+    command: /bin/bash -c "source /opt/vcmts/tools/vcmts-env/env.sh && source env/bin/activate && vcmts-pm infra-start && deactivate"
+    responses:
+      'Do you want to start CMK \? \[y/N\]:': 'y'
+      'Do you want to start Kubernetes Dashboard \? \[y/N\]:': 'y'
+      'Do you want to start Kubernetes DNS \? \[y/N\]:': 'N'
+      'Do you want to start tiller \? \[y/N\]:': 'y'
+      'Do you want to start init \? \[y/N\]:': 'y'
+    chdir: "/opt/vcmts/tools/vcmts-pm"
+    echo: yes
+    timeout: 120
+  register: infra_output
+  when:
+    - vcmts_env_type == "kubernetes"
+    - "'tg' in group_names"
+
+#verify K8S pods are running
+- name: get generated pod names
+  k8s_info:
+    kind: Pod
+    namespace: "{{ vcmts_namespace }}"
+  register: generated_pods
+  when:
+    - vcmts_env_type == "kubernetes"
+    - "'tg' in group_names"
+
+- name: wait for pod {{ podName }} to become ready
+  k8s:
+    kind: Pod
+    name: "{{ podName }}"
+    namespace: "{{ vcmts_namespace }}"
+    wait_condition:
+      status: yes
+      type: ContainersReady
+  vars:
+    podName: "{{ item.metadata.name }}"
+  with_items: 
+    - "{{ generated_pods.resources }}"
+  when: 
+    - vcmts_env_type == "kubernetes"
+    - "'tg' in group_names"
+    - podName |length > 0

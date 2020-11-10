@@ -1,0 +1,10 @@
+---
+install_dependencies:
+  Debian:
+    - python3
+    - python3-pip
+    - dnsutils
+  RedHat:
+    - python3
+    - python3-pip
+    - bind-utils

@@ -1,0 +1,51 @@
+---
+## Workload playbook variables ##
+
+# General
+pexpect_version: "3.3"
+pexpect_package: "pexpect=={{ pexpect_version }}"
+disable_docker_tty: false
+
+# AD-Insertion
+ad_insertion_enabled: false
+ad_insertion_namespace: default
+ad_insertion_version: master
+ad_insertion_helm_enabled: false
+#Xeon or VCAC-A
+adi_platform: Xeon
+# number of transcoding instances enabled for content or AD transcoding
+adi_num_transcodes: 1
+#number of analytics instances enabled for content analysis.
+adi_num_analytics: 1
+# target framework,gst or ffmpeg
+adi_framework: gst
+# mininum resolution to transcode for content and ad clip. 360p, 480p, 720p etc
+adi_resolution: 360p
+# the model network preference: FP32, FP16, INT8 or the combination of them
+adi_model_network: FP16
+
+# Smart-City
+smtc_enabled: false
+smtc_namespace: default
+smtc_default_version: master
+smtc_sriov_enabled: false
+smtc_helm_enabled: false
+smtc_dir: "/usr/src/smart-city"
+#traffic or stadium
+#traffic,stadium for combination
+smtc_scenario: traffic
+#Xeon or VCAC-A
+smtc_platform: Xeon
+#Number of Offices (1-3)
+smtc_num_offices: 2
+#Number of Cameras (1-8) for traffic; (1-8,1-8) for stadium (i.e. 4 for people, 5 for crowd)
+smtc_num_cameras: 5
+#Number of Analytic Instances (1-8) for traffic; (1-8,1-8) for stadium (i.e. 4 for people, 5 for crowd)
+smtc_num_analytics: 5
+#gst or ffmpeg
+smtc_framework: gst
+#cloud labels
+cloud_labels: ["cloud-zone","cloud-storage"]
+#zone and storage labels for each num of offices defined above
+office_labels: ["office1-zone","office1-storage","office2-zone","office2-storage"]
+

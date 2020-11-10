@@ -1,0 +1,98 @@
+---
+- name: set vcmts variables in /etc/environment
+  lineinfile:
+    path: "/etc/environment"
+    state: present
+    regexp: '^{{ item.name }}'
+    line: '{{ item.name }}={{ item.value }}'
+    create: yes
+    owner: root
+    group: root
+    mode: 0644
+  with_items:
+    - { name: "{{ host_type }}", value: "y" }
+    - { name: "MYHOME", value: "/opt" }
+  become: yes
+
+- name: set vcmts variables in .bashrc
+  lineinfile:
+    path: "{{ ansible_env.HOME }}/.bashrc"
+    state: present
+    regexp: '^{{ item.name }}'
+    line: '{{ item.name }}={{ item.value }}'
+    create: yes
+    owner: root
+    group: root
+    mode: 0644
+  with_items:
+    - { name: "{{ host_type }}", value: "y" }
+    - { name: "MYHOME", value: "/opt" }
+  become: yes
+
+- name: set proxy settings in vcmts proxy.sh
+  replace:
+    path: "/opt/vcmts/tools/vcmts-env/proxy.sh"
+    regexp: 'export {{ item.key }}=.*$'
+    replace: 'export {{ item.key }}={{ item.value }}'
+  with_dict: "{{ proxy_env }}"
+  when: '"http_proxy" in proxy_env or "https_proxy" in proxy_env'
+
+- name: set proxy settings in apt.conf
+  copy:
+    content: |
+      Acquire::http::Proxy "{{ http_proxy }}";
+      Acquire::https::Proxy "{{ https_proxy }}";
+    dest: /etc/apt/apt.conf
+
+#SSH Connection reset fails if --flush-cache passed as cmd line arg
+- name: reset ssh connection to load env changes for shell scripts
+  meta: reset_connection
+
+- name: add fqdn to vcmts common-host-config.sh
+  replace:
+    path: "/opt/vcmts/tools/vcmts-env/common-host-config.sh"
+    regexp: '{{ item.name }}.*$'
+    replace: '{{ item.name }}={{ item.value }}'
+  with_items:
+    - { name: "export VCMTSD_NODE_HOSTNAME", value: "\"{{ groups['dp'][0] }}.{{ vcmts_domain }}\"" }
+    - { name: "export PKTGEN_NODE_HOSTNAME", value: "\"{{ groups['tg'][0] }}.{{ vcmts_domain }}\"" }
+
+- name: set vcmts environment
+  replace:
+    path: "/opt/vcmts/tools/vcmts-env/common-host-config.sh"
+    regexp: 'export VCMTS_ENVIRONMENT.*$'
+    replace: 'export VCMTS_ENVIRONMENT={{ vcmts_env_type }}'
+
+- name: remove any existing k8s labels
+  command: kubectl label node {{ item.host }} {{ item.label }}-
+  with_items:
+    - { host: "{{ groups['tg'][0] }}", label: "vcmtspktgen" }
+    - { host: "{{ groups['dp'][0] }}", label: "vcmts" }
+  when: 
+    - vcmts_env_type == "kubernetes"
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: label k8s nodes
+  command: kubectl label node {{ item.host }} {{ item.label }}=true
+  register: label_output
+  failed_when: "'not labeled' in label_output"
+  with_items:
+    - { host: "{{ groups['tg'][0] }}", label: "vcmtspktgen" }
+    - { host: "{{ groups['dp'][0] }}", label: "vcmts" }
+  when: 
+    - vcmts_env_type == "kubernetes"
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: open docker TCP port 2375 for vcmts-pm communication
+  replace:
+    path: "/lib/systemd/system/docker.service"
+    regexp: '(ExecStart=/usr/bin/dockerd) (-H fd://.*)$'
+    replace: '\1 -H tcp://0.0.0.0:2375 \2'
+  when: vcmts_env_type == "kubernetes"
+
+- name: restart docker service
+  systemd:
+    state: restarted
+    daemon_reload: yes
+    name: docker
+  when: vcmts_env_type == "kubernetes"

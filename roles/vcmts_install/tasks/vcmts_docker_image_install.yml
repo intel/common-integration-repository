@@ -1,0 +1,145 @@
+---
+- name: update cmk commit id to 1.4.1 (TEMPORARY - RUNNING WITH BMRA CMK DISABLED ATM)
+  replace:
+    path: "{{ vcmts_src_dir }}/vcmts/tools/vcmts-env/env.sh"
+    regexp: '(.*)e3df769521558cff7734c568ac5d3882d4f41af9(.*)'
+    replace: "\\1e2d3f38c3e8542dd06c2758a0edd761078803d01\\2"
+  when: "'dp' in group_names"
+
+- name: install cmk docker image (TEMPORARY - RUNNING WITH BMRA CMK DISABLED ATM)
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_docker_cmk
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+- name: install cloud init docker image
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_docker_cloud_init
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'kube-node' in group_names"
+
+- name: install power manager docker image
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_docker_power_mgr
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+- name: install docker_sriov_dp docker image
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_docker_sriov_dp --no-cache
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'kube-node' in group_names"
+
+- name: install qat docker image
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_docker_qat --no-cache
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+- name: install collectd docker image
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_docker_collectd --no-cache
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+- name: install influxdb docker image
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_docker_influxdb
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+- name: fix grafana Dockfile issue
+  replace:
+    path: "{{ vcmts_src_dir }}/vcmts/telemetry/docker/docker-image-grafana/Dockerfile"
+    regexp: '(.*)RUN mv grafana(.*)'
+    replace: "\\1#RUN mv grafana\\2"
+  when: "'dp' in group_names"
+
+- name: install grafana docker image
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_docker_grafana --no-cache
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+- name: install vcmtsd docker image
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_docker_vcmtsd
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+- name: install docker library 
+  pip:
+    name: docker
+    state: present
+
+- name: get docker images on vcmts node
+  docker_image_info:
+    name:
+      - "vcmts-d:{{ vcmts_image_tag }}"
+      - "vcmts-grafana:{{ vcmts_image_tag }}"
+      - "vcmts-collectd:{{ vcmts_image_tag }}"
+      - "qat-device-plugin:{{ vcmts_image_tag }}"
+      - "sriov-device-plugin:{{ vcmts_image_tag }}"
+      - "vcmts-power-mgr:{{ vcmts_image_tag }}"
+      - "vcmts-cloud-init:{{ vcmts_image_tag }}"
+      - "cmk:{{ cmk_version }}"
+  register: result
+  when: "'dp' in group_names"
+
+- name: Make sure all vcmts docker images exist on vcmts node
+  assert:
+    that:
+      - result.images | length == 8
+  when: "'dp' in group_names"
+
+- name: install pktgen docker image
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_docker_pktgen
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'tg' in group_names"
+
+- name: get docker images on pktgen node
+  docker_image_info:
+    name:
+      - "vcmts-pktgen:{{ vcmts_image_tag }}"
+      - "sriov-device-plugin:{{ vcmts_image_tag }}"
+      - "vcmts-cloud-init:{{ vcmts_image_tag }}"
+  register: result
+  when: "'tg' in group_names"
+
+- name: Make sure all pktgen docker images exist on pktgen node
+  assert:
+    that:
+      - result.images | length == 3
+  when: "'tg' in group_names"
+

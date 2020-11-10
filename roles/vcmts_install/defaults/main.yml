@@ -1,0 +1,22 @@
+---
+vcmts_pkg_url: "https://01.org/sites/default/files/downloads//intel-vcmtsd-v19-12-0.tar.gz"
+vcmts_src_dir: "/opt/"
+vcmts_image_tag: "v19.12.0"
+
+host_type: >-
+  {% if 'tg' in group_names %}PKTGEN_HOST{% else %}VCMTSD_HOST{% endif %}
+
+pktgen_host: >-
+  {% if host_type == 'PKTGEN_HOST' %}y{% else %}n{% endif %}
+
+vcmtsd_host: >-
+  {% if host_type == 'VCMTSD_HOST' %}y{% else %}n{% endif %}
+
+vcmts_env:
+  PKTGEN_HOST: "{{ pktgen_host }}"
+  VCMTSD_HOST: "{{ vcmtsd_host }}"
+  MYHOME: "{{ vcmts_src_dir }}"
+
+cmk_version: "v1.4.1"
+cmk_rbac_url: "https://raw.githubusercontent.com/intel/CPU-Manager-for-Kubernetes/master/resources/authorization/cmk-rbac-rules.yaml"
+vcmts_namespace: "default"

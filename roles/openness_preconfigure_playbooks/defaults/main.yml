@@ -1,0 +1,38 @@
+---
+openness_cur_dir: "openness-current"
+openness_next_dir: "openness-next"
+openness_cur_gv_path: "/10-default.yml"
+openness_next_gv_path: "/10-default.yml"
+
+openness_dir: "{%- if openness_current_enabled -%}{{ openness_cur_dir }}{%- elif openness_next_enabled -%}{{ openness_next_dir }}{%- endif -%}"
+openness_gv_path: "{%- if openness_current_enabled -%}{{ openness_cur_gv_path }}{%- elif openness_next_enabled -%}{{ openness_next_gv_path }}{%- endif -%}"
+
+openness_groupvars_all: "../orchestration/{{ openness_dir }}/group_vars/all{{ openness_gv_path }}"
+openness_groupvars_ctrl: "../orchestration/{{ openness_dir }}/group_vars/controller_group{{ openness_gv_path }}"
+openness_groupvars_node: "../orchestration/{{ openness_dir }}/group_vars/edgenode_group{{ openness_gv_path }}"
+openness_groupvars_vca_node: "../orchestration/{{ openness_dir }}/group_vars/edgenode_vca_group{{ openness_gv_path }}"
+
+openness_groupvars_all_folder: "{{ lookup('env', 'PWD') }}/playbooks/orchestration/{{ openness_dir }}/group_vars/all"
+openness_groupvars_ctrl_folder: "{{ lookup('env', 'PWD') }}/playbooks/orchestration/{{ openness_dir }}/group_vars/controller_group"
+openness_groupvars_node_folder: "{{ lookup('env', 'PWD') }}/playbooks/orchestration/{{ openness_dir }}/group_vars/edgenode_group"
+openness_groupvars_vca_node_folder: "{{ lookup('env', 'PWD') }}/playbooks/orchestration/{{ openness_dir }}/group_vars/edgenode_vca_group"
+
+openness_vca_flavor_all: "{{ lookup('env', 'PWD') }}/playbooks/orchestration/{{ openness_dir }}/flavors/media-analytics-vca/all.yml"
+openness_vca_flavor_ctrl: "{{ lookup('env', 'PWD') }}/playbooks/orchestration/{{ openness_dir }}/flavors/media-analytics-vca/controller_group.yml"
+openness_vca_flavor_node: "{{ lookup('env', 'PWD') }}/playbooks/orchestration/{{ openness_dir }}/flavors/media-analytics-vca/edgenode_group.yml"
+openness_vca_flavor_vca_node: "{{ lookup('env', 'PWD') }}/playbooks/orchestration/{{ openness_dir }}/flavors/media-analytics-vca/edgenode_vca_group.yml"
+
+
+openness_cur_branch: "openness-20.09.01"
+openness_next_branch: "openness-20.09.01"
+openness_branch: "{%- if openness_current_enabled -%}{{ openness_cur_branch }}{%- elif openness_next_enabled -%}{{ openness_next_branch }}{%- endif -%}"
+
+openness_playbook: "../orchestration/{{ openness_dir }}/network_edge.yml"
+
+proxy_yum_key: "{%- if openness_current_enabled -%}proxy_yum:{%- elif openness_next_enabled -%}proxy_yum:{%- endif -%}"
+proxy_enable_key: "{%- if openness_current_enabled -%}proxy_enable:{%- elif openness_next_enabled -%}proxy_enable:{%- endif -%}"
+proxy_http_key: "{%- if openness_current_enabled -%}proxy_http:{%- elif openness_next_enabled -%}proxy_http:{%- endif -%}"
+proxy_https_key: "{%- if openness_current_enabled -%}proxy_https:{%- elif openness_next_enabled -%}proxy_https:{%- endif -%}"
+proxy_ftp_key: "{%- if openness_current_enabled -%}proxy_ftp:{%- elif openness_next_enabled -%}proxy_ftp:{%- endif -%}"
+proxy_noproxy_key: "{%- if openness_current_enabled -%}proxy_noproxy:{%- elif openness_next_enabled -%}proxy_noproxy:{%- endif -%}"
+

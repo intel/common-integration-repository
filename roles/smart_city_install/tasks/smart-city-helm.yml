@@ -1,0 +1,104 @@
+---
+- name: copy SMTC helm chart to the master node
+  copy:
+    src: "{{ smtc_helm_dir }}"
+    dest: "/usr/src/charts/smart-city"
+    remote_src: yes
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: copy SMTC helm chart values file and push to master node
+  copy:
+    src: "/usr/src/charts/smart-city/values.yaml"
+    dest: "/usr/src/charts/smtc-values.yml"
+    remote_src: yes
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: get smart_city deploy status
+  shell: "helm list |grep Smart-City-Sample |grep smart-city |grep {{ smtc_namespace }} |wc -l"
+  args:
+    executable: /bin/bash
+  register: smtc_deploy_status
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: uninstall the SMTC old_version if exists
+  command: "helm uninstall smart-city -n {{ smtc_namespace }}"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+    - smtc_deploy_status.stdout |int == 1
+
+- name: delete the SMTC secret if exists
+  k8s:
+    state: absent
+    api_version: v1
+    namespace: "{{ smtc_namespace }}"
+    kind: secret
+    name: self-signed-certificate
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+    - smtc_deploy_status.stdout |int == 1
+
+- name: delete the SMTC configmap if exists
+  k8s:
+    state: absent
+    api_version: v1
+    namespace: "{{ smtc_namespace }}"
+    kind: configmap
+    name: sensor-info
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+    - smtc_deploy_status.stdout |int == 1
+
+- name: wait 90s for kubectl delete resource complete
+  wait_for:
+    timeout: 90
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+    - smtc_deploy_status.stdout |int == 1
+
+- name: generate certificate file
+  command: "/bin/bash self-sign.sh"
+  args:
+    chdir: "{{ smtc_cert_dir }}"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: get smart-city secert file value for crt
+  shell: "cat {{ smtc_cert_dir }}/self.crt |base64 -w0"
+  register: smart_city_cert_crt
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: get smart-city secert file value for key
+  shell: "cat {{ smtc_cert_dir }}/self.key |base64 -w0"
+  register: smart_city_cert_key
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: create smart-city secret
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: secret
+      type: Opaque
+      metadata:
+        name: self-signed-certificate
+        namespace: "{{ smtc_namespace }}"
+      data:
+        self.crt: "{{ smart_city_cert_crt.stdout }}"
+        self.key: "{{ smart_city_cert_key.stdout }}"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: create smart-city configmap
+  command: kubectl create configmap sensor-info "--from-file={{ smtc_dir }}/maintenance/db-init/sensor-info.json"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: helm install smart-city
+  command: helm upgrade -i smart-city --namespace {{ smtc_namespace }} -f /usr/src/charts/smtc-values.yml /usr/src/charts/smart-city
+  when:
+    - inventory_hostname == groups['kube-master'][0]

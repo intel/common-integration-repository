@@ -1,0 +1,42 @@
+---
+- name: install base packages on camera nodes (1/3)
+  import_role:
+    name: "{{ bmra_bootstrap_role }}/configure_proxy"
+  when: openness_external_dataplane
+
+- name: install base packages on camera nodes (2/3)
+  import_role:
+    name: "{{ bmra_bootstrap_role }}/install_packages"
+  when: openness_external_dataplane
+
+- name: install base packages on camera nodes (3/3)
+  import_role:
+    name: "{{ bmra_bootstrap_role }}/configure_security"
+  when: openness_external_dataplane
+
+- name: install additional dependencies
+  include_role:
+    name: install_dependencies
+  when: openness_external_dataplane
+
+- name: install docker on camera nodes
+  import_role:
+    name: "{{ openness_docker_role }}"
+  vars:
+    offline_mode: false
+    proxy_os_enable: true
+    proxy_os_http: "{{ http_proxy }}"
+    proxy_os_https: "{{ https_proxy }}"
+    proxy_os_ftp: "{{ http_proxy }}"
+    proxy_os_noproxy: "{{ no_proxy }}"
+  when: openness_external_dataplane
+
+- name: clone and build Smart-City
+  import_role:
+    name: smart_city_make
+  when: openness_external_dataplane
+
+- name: start smart-city openness camera
+  make:
+    target: start_openness_camera
+    chdir: "{{ smtc_dir }}/build"

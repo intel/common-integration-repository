@@ -1,0 +1,44 @@
+---
+#version installed by ansible_pkg_mgr through install_dependencies is too old
+- name: install pexpect
+  pip:
+    name: "{{ pexpect_package }}"
+    state: present
+
+- name: config vcmts platform using vcmts-pm
+  expect:
+    command: /bin/bash -c "export PKTGEN_NODE_HOSTNAME={{ groups['tg'][0] }}.{{ vcmts_domain }} && source env/bin/activate && vcmts-pm config-platform vcmtsd && deactivate"
+    responses:
+      'Please enter vcmtsd node fully qualified hostname:': "{{ groups['dp'][0] }}.{{ vcmts_domain }}"
+      'Is the above hostname \(with FQDN\) OK\? \[y/N\]:': 'y'
+      'Is the above OK\? \[y/N\]:': 'y'
+      'Press any key to continue or ctrl-c to exit...': 'y'
+      'Would you like to blacklist any of the above\? \[y/N\]:': 'N'
+      'Would you like to enable power management\? \[y/N\]:': 'N'
+      'Do you have a switch between Pktgen and vCMTS servers\? \[Y/n\]:': 'Y'
+      'Proceed with installation\? \[y/N\]:': 'y'
+    chdir: "/opt/vcmts/tools/vcmts-pm"
+    echo: yes
+    timeout: 120
+  register: vcmtsd_output
+  failed_when:
+    - "'Installation complete' not in vcmtsd_output.stdout"
+  when: "'tg' in group_names"
+
+- name: config tg platform using vcmts-pm
+  expect:
+    command: /bin/bash -c "export PKTGEN_NODE_HOSTNAME={{ groups['tg'][0] }}.{{ vcmts_domain }} && source env/bin/activate && vcmts-pm config-platform pktgen && deactivate"
+    responses:
+      'Please enter vcmtsd node fully qualified hostname:': "{{ groups['dp'][0] }}.{{ vcmts_domain }}"
+      'Is the above hostname \(with FQDN\) OK\? \[y/N\]:': 'y'
+      'Is the above OK\? \[y/N\]:': 'y'
+      'Press any key to continue or ctrl-c to exit...': 'y'
+      'Would you like to blacklist any of the above\? \[y/N\]:': 'N'
+      'Proceed with installation\? \[y/N\]:': 'y'
+    chdir: "/opt/vcmts/tools/vcmts-pm"
+    echo: yes
+    timeout: 120
+  register: pktgen_output
+  failed_when:
+    - "'Installation complete' not in pktgen_output.stdout"
+  when: "'tg' in group_names"

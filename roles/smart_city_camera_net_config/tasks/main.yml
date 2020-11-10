@@ -1,0 +1,36 @@
+---
+- set_fact:
+    camera_num: "{{ groups.cameras.index(inventory_hostname) | int + 1 }}"
+
+- set_fact:
+    camera_ip: "192.168.{{ camera_num }}.10"
+
+# Assumes using first port of dataplane NIC
+#- name: get dataplane interface devices
+#  command: "lspci -d {{ sriov_nics[0].device_info }}"
+#  register: dataplane_device_list
+
+#- set_fact:
+#    port_num: "{{ sriov_nics[0].bus_info | regex_replace('\\w\\w:00.(\\d)', '\\1') }}"
+
+#- set_fact:
+#    camera_dataplane_device: "{{ dataplane_device_list.stdout_lines[port_num|int].split(' ')[0] }}"
+
+#- name: get interface of primary dataplane device
+#  shell: "lshw -class network | grep -A 1 {{ camera_dataplane_device }}"
+#  register: dataplane_interface_list
+
+#- set_fact:
+#    camera_dataplane_interface: "{{ dataplane_interface_list.stdout_lines[1] | regex_replace('\\s+logical name: ', '') }}"
+
+# Assumes using first port of dataplane NIC
+- name: enable dataplane interface
+  command: "ip link set {{ sriov_nics[0].name }} up"
+
+- name: assign ip to dataplane interface
+  command: "ip a add {{ camera_ip }}/24 dev {{ sriov_nics[0].name }}"
+  ignore_errors: true
+
+- name: add route to openness gateway
+  command: "route add -net 10.16.0.0/24 gw 192.168.{{ camera_num }}.1 dev {{ sriov_nics[0].name }}"
+  ignore_errors: true

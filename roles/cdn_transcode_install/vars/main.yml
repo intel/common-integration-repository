@@ -1,0 +1,12 @@
+---
+install_dependencies:
+  Debian:
+    - git
+    - make
+    - cmake
+    - docker-compose
+    - m4
+  RedHat:
+    - git
+    - make
+    - cmake

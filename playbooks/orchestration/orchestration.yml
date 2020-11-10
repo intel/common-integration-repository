@@ -1,0 +1,28 @@
+---
+- name: install k8s infrastructure 
+  import_playbook: bmra-current/playbooks/{{ profile }}.yml
+  when: bmra_current_enabled | default (true)
+
+- hosts: openness-cluster
+  tasks: []
+  roles:
+    - role: cluster_defaults
+      tags: defaults
+    - role: openness_preinstall
+      when: openness_enabled | default(false)
+  environment: "{{ proxy_env | d({}) }}"
+
+- hosts: localhost
+  connection: local
+  tasks: []
+  roles:
+    - role: cluster_defaults
+      tags: defaults
+    - role: openness_preconfigure_playbooks
+      when: openness_enabled | default(false)
+  environment: "{{ proxy_env | d({}) }}"
+
+- name: OpenNESS NE install (CURRENT)
+  import_playbook: "openness-current/network_edge.yml"
+  when: openness_current_enabled | default (false)
+

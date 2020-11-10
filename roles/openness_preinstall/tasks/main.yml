@@ -1,0 +1,107 @@
+---
+- name: Update /etc/hosts format
+  replace:
+    path: "/etc/hosts"
+    regexp: "(.+){{ item }}"
+    replace: "\\1{{ item }} {{ hostvars[inventory_hostname]['ansible_nodename'] }}"
+  with_items:
+    - "localhost4.localdomain4"
+    - "localhost6.localdomain6"
+  
+- name: Disable SWAP (current session) (1/2)
+  command: swapoff -a
+
+- name: Disable SWAP (in /etc/fstab) (2/2)
+  replace:
+    path: /etc/fstab
+    regexp: '(.*swap.*)$'
+    replace: '# \1'
+
+- name: retrieve node mgmt subnet(s)
+  shell: "ip route | grep {{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
+  register: mgmt_route
+
+- set_fact:
+    mgmt_subnet: "{{ mgmt_route.stdout | regex_search('(.*0/.*) dev', '\\1') }}"
+
+#- name: get dataplane interface devices
+#  command: "lspci -d {{ sriov_nics[0].device_info }}"
+#  register: dataplane_device_list
+#  when:
+#    - smtc_enabled
+#    - openness_external_dataplane
+#    - "'edgenode_group' in group_names"
+
+#- set_fact:
+#    office_dataplane_device: "{{ dataplane_device_list.stdout_lines[nic_port].split(' ')[0] }}"
+#  when:
+#    - smtc_enabled
+#    - openness_external_dataplane
+#    - "'edgenode_group' in group_names"
+
+#- name: get interface of primary dataplane device
+#  shell: "lshw -class network | grep -A 1 {{ office_dataplane_device }}"
+#  register: dataplane_interface_list
+#  when:
+#    - smtc_enabled
+#    - openness_external_dataplane
+#    - "'edgenode_group' in group_names"
+
+#- set_fact:
+#    office_dataplane_interface: "{{ dataplane_interface_list.stdout_lines[1] | regex_replace('\\s+logical name: ', '') }}"
+#  when:
+#    - smtc_enabled
+#    - openness_external_dataplane
+#    - "'edgenode_group' in group_names"
+
+# Assumes using first port of dataplane NIC
+#- name: enable dataplane interface
+#  command: "ip link set {{ sriov_nics[0].name }} up"
+#  when:
+#    - smtc_enabled
+#    - openness_external_dataplane
+#    - "'edgenode_group' in group_names"
+
+#Sync system clocks
+
+- name: enable service firewalld and ensure it is not masked
+  systemd:
+    name: firewalld
+    enabled: yes
+    masked: no
+  when: vcaca_enabled
+
+- name: Make sure firewalld is running
+  systemd:
+    state: started
+    name: firewalld
+  when: vcaca_enabled
+
+# install k8s module dependencies
+- name: install epel-release
+  yum:
+    name: epel-release
+  when:
+    - ansible_os_family == "RedHat"
+    - ansible_distribution != "Fedora"
+
+- name: install pip
+  yum:
+    name: python-pip
+
+- name: upgrade Python wheel and setuptools
+  pip:
+    name:
+      - wheel==0.34.2
+      - setuptools<=44
+    extra_args: --upgrade
+
+- name: install pip module to manage K8s objects (satisfy requirement of the k8s_raw module)
+  pip:
+    name: openshift
+  when:
+    inventory_hostname == groups['controller_group'][0]
+
+- name: install older bcrypt as latest will cause docker_image module fail
+  pip:
+    name: bcrypt==3.1.7

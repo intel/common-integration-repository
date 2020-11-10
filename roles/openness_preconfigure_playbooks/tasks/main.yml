@@ -1,0 +1,177 @@
+---
+- name: update OpenNESS group_vars proxy enable
+  replace:
+    path: "{{ openness_groupvars_all }}"
+    regexp: "{{ proxy_enable_key }}.+"
+    replace: "{{ proxy_enable_key }} true"
+
+- name: update OpenNESS group_vars proxy settings
+  replace:
+    path: "{{ openness_groupvars_all }}"
+    regexp: "{{ item.regex }}"
+    replace: "\\1 {{ item.proxy }}"
+  with_items:
+    - { regex: "({{ proxy_yum_key }}).+", proxy: "\"{{ http_proxy }}\"" }
+    - { regex: "({{ proxy_http_key }}).+", proxy: "\"{{ http_proxy }}\"" }
+    - { regex: "({{ proxy_https_key }}).+", proxy: "\"{{ https_proxy }}\"" }
+    - { regex: "({{ proxy_ftp_key }}).+", proxy: "\"{{ http_proxy }}\"" }
+
+- name: retrieve OpenNESS noproxy line
+  shell: "cat {{ openness_groupvars_all }} | grep {{ proxy_noproxy_key }}"
+  register: noproxy_line
+  changed_when: True
+
+- name: update OpenNESS group_vars noproxy with localhost
+  replace:
+    path: "{{ openness_groupvars_all }}"
+    regexp: "{{ proxy_noproxy_key }}(.+)\""
+    replace: "{{ proxy_noproxy_key }}\\1,localhost\""
+  when: '"localhost" not in noproxy_line.stdout'
+
+- name: remove leading comma from OpenNESS group_vars noproxy
+  replace:
+    path: "{{ openness_groupvars_all }}"
+    regexp: "{{ proxy_noproxy_key }} \","
+    replace: "{{ proxy_noproxy_key }} \""
+
+- name: retrieve ansible host mgmt subnet
+  shell: "ip route | grep {{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}"
+  register: mgmt_route
+
+- set_fact:
+    mgmt_subnet: "{{ mgmt_route.stdout | regex_search('(.*0/.*) dev', '\\1') }}"
+    cluster_subnet: []
+
+- name: update OpenNESS group_vars noproxy with jumphost subnet
+  replace:
+    path: "{{ openness_groupvars_all }}"
+    regexp: "{{ proxy_noproxy_key }}(.+)\""
+    replace: "{{ proxy_noproxy_key }}\\1,{{ mgmt_subnet | first }}\""
+
+# join ansible host and target node subnets
+- set_fact:
+    cluster_subnet: "{{ cluster_subnet | union([ hostvars[groups['openness-cluster'][(index)]]['mgmt_subnet'] ]) }}"
+  loop: "{{ groups['openness-cluster'] }}"
+  loop_control:
+    index_var: index
+
+- name: update OpenNESS group_vars noproxy with openness cluster node subnet(s)
+  replace:
+    path: "{{ openness_groupvars_all }}"
+    regexp: "{{ proxy_noproxy_key }}(.+)\""
+    replace: "{{ proxy_noproxy_key }}\\1,{{ item }}\""
+  with_items: "{{ cluster_subnet }}"
+
+- name: update OpenNESS git repo token
+  replace:
+    path: "{{ openness_groupvars_all }}"
+    regexp: "git_repo_token:.+\""
+    replace: "git_repo_token: {{ openness_git_repo_token }}"
+  when: openness_next_enabled
+
+- name: update OpenNESS group_vars controller branch
+  replace:
+    path: "{{ openness_groupvars_ctrl }}"
+    regexp: "git_repo_branch:.+"
+    replace: "git_repo_branch: {{ openness_branch }}"
+
+- name: update OpenNESS group_vars edge node branch
+  replace:
+    path: "{{ openness_groupvars_node }}"
+    regexp: "git_repo_branch:.+"
+    replace: "git_repo_branch: {{ openness_branch }}"
+
+#- name: update OpenNESS time/verify role
+#  replace:
+#    path: "{{ openness_playbook }}"
+#    regexp: "(.*)- role: time/verify"
+#    replace: "\\1# - role: time/verify"
+#  when: openness_skip_time_verify
+
+#- name: update OpenNESS custom_kernel role
+#  replace:
+#    path: "{{ openness_playbook }}"
+#    regexp: "(.*)- role: machine_setup/custom_kernel"
+#    replace: "\\1# - role: machine_setup/custom_kernel"
+#  when: openness_skip_custom_kernel
+
+#- name: update OpenNESS configure_tuned role
+#  replace:
+#    path: "{{ openness_playbook }}"
+#    regexp: "(.*)- role: machine_setup/configure_tuned"
+#    replace: "\\1# - role: machine_setup/configure_tuned"
+#  when: openness_skip_tune_kernel
+
+#- name: update OpenNESS hddl role for VCAC-A master node
+#  replace:
+#    path: "{{ openness_playbook }}"
+#    regexp: "(.*)# - role: hddl/network_edge/master"
+#    replace: "\\1- role: hddl/network_edge/master"
+#  when: vcaca_enabled
+
+#- name: update OpenNESS hddl role for VCAC-A edge node
+#  replace:
+#    path: "{{ openness_playbook }}"
+#    regexp: "(.*)# - role: hddl/network_edge/worker"
+#    replace: "\\1- role: hddl/network_edge/worker"
+#  when: vcaca_enabled
+
+#- name: update OpenNESS device_plugin role for VCAC-A edge node
+#  replace:
+#    path: "{{ openness_playbook }}"
+#    regexp: "(.*)# - role: kubernetes/device_plugins"
+#    replace: "\\1- role: kubernetes/device_plugins"
+#  when: 
+#    - vcaca_enabled
+
+- name: update OpenNESS group_vars networking CNI
+  replace:
+    path: "{{ openness_groupvars_all }}"
+    regexp: "- kubeovn"
+    replace: "- weavenet"
+  when: vcaca_enabled
+
+- name: Create flavor vca group_var all link
+  file:
+    src: "{{ openness_vca_flavor_all }}"
+    dest: "{{ openness_groupvars_all_folder }}/30_media-analytics-vca_flavor.yml"
+    state: link
+  when:
+    - vcaca_enabled
+#    - openness_branch != "openness-20.03"
+
+- name: Create flavor vca group_var controller_group link
+  file:
+    src: "{{ openness_vca_flavor_ctrl }}"
+    dest: "{{ openness_groupvars_ctrl_folder }}/30_media-analytics-vca_flavor.yml"
+    state: link
+  when:
+    - vcaca_enabled
+#    - openness_branch != "openness-20.03"
+
+- name: Create flavor vca group_var edgenode_group link
+  file:
+    src: "{{ openness_vca_flavor_node }}"
+    dest: "{{ openness_groupvars_node_folder }}/30_media-analytics-vca_flavor.yml"
+    state: link
+  when:
+    - vcaca_enabled
+#    - openness_branch != "openness-20.03"
+
+- name: Create flavor vca group_var edgenode_vca_group link
+  file:
+    src: "{{ openness_vca_flavor_vca_node }}"
+    dest: "{{ openness_groupvars_vca_node_folder }}/30_media-analytics-vca_flavor.yml"
+    state: link
+  when:
+    - vcaca_enabled
+#    - openness_branch != "openness-20.03"
+
+- name: comment hddl/vca setup as always fail and those plugin are not used by adi/smtc
+  replace:
+    path: "{{ openness_playbook }}"
+    regexp: "(.*)- role: hddl/vca_setup"
+    replace: "\\1# - role: hddl/vca_setup"
+  when:
+    - vcaca_enabled
+#    - openness_branch != "openness-20.03"

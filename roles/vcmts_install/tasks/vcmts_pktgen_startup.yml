@@ -1,0 +1,62 @@
+---
+- name: start pktgen workload
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    source env/bin/activate &&
+    vcmts-pm pktgen-start &&
+    deactivate
+  args:
+    chdir: "/opt/vcmts/tools/vcmts-pm"
+    executable: /bin/bash
+  register: pktgen_output
+  failed_when:
+    - "'Starting pktgen instance' not in pktgen_output.stdout"
+    - vcmts_env_type == "baremetal"
+  when:
+    - "'tg' in group_names"
+
+#verify K8S pods are running
+- name: get generated pod names
+  k8s_info:
+    kind: Pod
+    namespace: "{{ vcmts_namespace }}"
+  register: generated_pods
+  when:
+    - vcmts_env_type == "kubernetes"
+    - "'tg' in group_names"
+
+- name: wait for pod {{ podName }} to become ready
+  k8s:
+    kind: Pod
+    name: "{{ podName }}"
+    namespace: "{{ vcmts_namespace }}"
+    wait_condition:
+      status: yes
+      type: ContainersReady
+  vars:
+    podName: "{{ item.metadata.name }}"
+  with_items: 
+    - "{{ generated_pods.resources }}"
+  when: 
+    - vcmts_env_type == "kubernetes"
+    - "'tg' in group_names"
+    - podName |length > 0
+
+- name: verify running pktgen instances
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    source env/bin/activate &&
+    vcmts-pm pktgen-status &&
+    deactivate
+  args:
+    chdir: "/opt/vcmts/tools/vcmts-pm"
+    executable: /bin/bash
+  register: pktgen_service_output
+  failed_when:
+    - "'NOT_RUNNING' in pktgen_service_output.stdout"
+    - vcmts_env_type == "baremetal"
+  when:
+    - "'tg' in group_names"
+
+- debug:
+    msg: "{{ pktgen_service_output }}"

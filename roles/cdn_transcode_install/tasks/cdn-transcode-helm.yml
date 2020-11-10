@@ -1,0 +1,99 @@
+---
+- name: copy the pv yaml files into helm dir
+  copy: 
+    src: "{{ cdn_transcode_k8s_dir }}/{{ item }}"
+    dest: "{{ cdn_transcode_helm_templates_dir }}"
+    remote_src: yes
+  with_items:
+    - "video-archive-pv.yaml"
+    - "video-cache-pv.yaml"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: copy CDN helm chart to the master node
+  copy:
+    src: "{{ cdn_transcode_helm_dir }}"
+    dest: "/usr/src/charts/cdn-transcode"
+    remote_src: yes
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: copy CDN helm chart values file and push to master node
+  copy:
+    src: "/usr/src/charts/cdn-transcode/values.yaml"
+    dest: "/usr/src/charts/cdn-values.yml"
+    remote_src: yes
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: get cdn_transcode deploy status
+  shell: "helm list |grep cdn-transcode-sample |grep cdn-transcode |grep {{ cdn_transcode_namespace }} |wc -l"
+  args:
+    executable: /bin/bash
+  register: cdn_deploy_status
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: uninstall the CDN old_version if exists
+  command: "helm uninstall cdn-transcode -n {{ cdn_transcode_namespace }}"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+    - cdn_deploy_status.stdout |int == 1
+
+- name: delete the CDN secret if exists
+  k8s:
+    state: absent
+    api_version: v1
+    namespace: "{{ cdn_transcode_namespace }}"
+    kind: secret
+    name: self-signed-certificate
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+    - cdn_deploy_status.stdout |int == 1
+
+- name: wait 90s for kubectl delete resource complete
+  wait_for:
+    timeout: 90
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+    - cdn_deploy_status.stdout |int == 1
+
+- name: generate certificate file
+  command: "/bin/bash self-sign.sh"
+  args:
+    chdir: "{{ cdn_transcode_cert_dir }}"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: get cdn-transcode secert file value for crt
+  shell: "cat {{ cdn_transcode_cert_dir }}/self.crt |base64 -w0"
+  register: cdn_transcode_cert_crt
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: get cdn-transcode secert file value for key
+  shell: "cat {{ cdn_transcode_cert_dir }}/self.key |base64 -w0"
+  register: cdn_transcode_cert_key
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: create cdn-transcode secert
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: secret
+      type: Opaque
+      metadata:
+        name: self-signed-certificate
+        namespace: "{{ cdn_transcode_namespace }}"
+      data:
+        self.crt: "{{ cdn_transcode_cert_crt.stdout }}"
+        self.key: "{{ cdn_transcode_cert_key.stdout }}"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: helm install cdn-transcode
+  command: helm upgrade -i cdn-transcode --namespace {{ cdn_transcode_namespace }} -f /usr/src/charts/cdn-values.yml /usr/src/charts/cdn-transcode
+  when:
+    - inventory_hostname == groups['kube-master'][0]

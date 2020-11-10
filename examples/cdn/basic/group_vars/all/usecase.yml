@@ -1,0 +1,19 @@
+---
+## Workload playbook variables ##
+
+# General
+pexpect_version: "3.3"
+pexpect_package: "pexpect=={{ pexpect_version }}"
+disable_docker_tty: false
+
+# CDN-Transcode
+cdn_transcode_enabled: true
+cdn_transcode_namespace: default
+cdn_transcode_version: master
+cdn_transcode_helm_enabled: false
+#Number of vod instances
+cdn_vod_num: 2
+#Number of live instances
+cdn_live_num: 1
+#local cdn image repo registry url like: localhost:30500
+cdn_image_registry: ""

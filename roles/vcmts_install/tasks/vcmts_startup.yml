@@ -1,0 +1,62 @@
+---
+- name: start vcmts workload
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    source env/bin/activate &&
+    vcmts-pm vcmtsd-start &&
+    deactivate
+  args:
+    chdir: "/opt/vcmts/tools/vcmts-pm"
+    executable: /bin/bash
+  register: vcmtsd_output
+  failed_when:
+    - "'Starting vcmtsd instance' not in vcmtsd_output.stdout" 
+    - vcmts_env_type == "baremetal"
+  when:
+    - "'tg' in group_names"
+
+#verify K8S pods are running
+- name: get generated pod names
+  k8s_info:
+    kind: Pod
+    namespace: "{{ vcmts_namespace }}"
+  register: generated_pods
+  when:
+    - vcmts_env_type == "kubernetes"
+    - "'tg' in group_names"
+
+- name: wait for pod {{ podName }} to become ready
+  k8s:
+    kind: Pod
+    name: "{{ podName }}"
+    namespace: "{{ vcmts_namespace }}"
+    wait_condition:
+      status: yes
+      type: ContainersReady
+  vars:
+    podName: "{{ item.metadata.name }}"
+  with_items: 
+    - "{{ generated_pods.resources }}"
+  when: 
+    - vcmts_env_type == "kubernetes"
+    - "'tg' in group_names"
+    - podName |length > 0
+
+- name: verify service group instances are running
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    source env/bin/activate &&
+    vcmts-pm vcmtsd-status &&
+    deactivate
+  args:
+    chdir: "/opt/vcmts/tools/vcmts-pm"
+    executable: /bin/bash
+  register: vcmtsd_service_output
+  failed_when:
+    - "'NOT_RUNNING' in vcmtsd_service_output.stdout"
+    - vcmts_env_type == "baremetal"
+  when:
+    - "'tg' in group_names"
+
+- debug:
+    msg: "{{ vcmtsd_service_output }}"

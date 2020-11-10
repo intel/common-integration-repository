@@ -1,0 +1,9 @@
+---
+smtc_k8s_dir: "{{ smtc_dir }}/deployment/kubernetes"
+smtc_cert_dir: "{{ smtc_dir }}/deployment/certificate"
+smtc_maint_dir: "{{ smtc_dir }}/maintenance/db-init"
+smtc_service_node_port_range: "1-65535"
+smtc_ssl_cert_yaml: "self-certificates.yaml"
+smtc_sensor_info_json: "sensor-info.json"
+smtc_helm_dir: "{{ smtc_k8s_dir }}/helm/smtc/"
+smtc_helm_templates_dir: "{{ smtc_helm_dir }}/templates"

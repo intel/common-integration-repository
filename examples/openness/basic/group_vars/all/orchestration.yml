@@ -1,0 +1,21 @@
+---
+## Orchestration playbook variables ##
+
+## BMRA master playbook variables ##
+bmra_current_enabled: false
+bmra_next_enabled: false
+secure_cluster: false
+update_kernel: false
+development_tools: false
+# needs to be defined if skipping kubespray k8s installation
+kube_cert_dir: "/etc/kubernetes/ssl"
+
+# OpenNESS
+openness_enabled: true
+openness_current_enabled: true
+openness_next_enabled: false
+openness_git_repo_token: ""
+openness_external_dataplane: false
+openness_skip_time_verify: false
+openness_skip_custom_kernel: false
+openness_skip_tune_kernel: false

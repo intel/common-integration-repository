@@ -1,0 +1,145 @@
+---
+- name: install dependencies
+  include_role:
+    name: install_dependencies
+
+# 2.1.9, 2.2.9 DOWNLOAD vCMTS PKG
+- name: Download and unarchive vcmts package from URL
+  unarchive:
+    src: "{{ vcmts_pkg_url }}"
+    dest: "{{ vcmts_src_dir }}"
+    remote_src: yes
+
+# 2.1.10, 2.2.10 CONFIGURE PROXY & ENV VARS
+- name: vcmts/pktgen env setup
+  include: vcmts_env_setup.yml
+  any_errors_fatal: true
+
+- name: disable ufw on dp node
+  shell: ufw disable
+  args:
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+# 2.1.11, 2.2.11 INSTALL LINUX PKGS
+- name: install vcmts dependencies
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    install_base_ubuntu_pkgs
+  args:
+    chdir: "/opt/vcmts"
+    executable: /bin/bash
+  register: dependency_output
+  failed_when: "'end of base package install' not in dependency_output.stdout"
+
+# 2.2.12 INSTALL vCMTS PM TOOL
+- name: install pip3 virtualenv
+  pip:
+    name: virtualenv
+    executable: pip3
+  when: "'tg' in group_names"
+
+# 2.2.12 INSTALL vCMTS PM TOOL
+- name: install vcmts-pm tool
+  shell: >
+    python3.6 -m virtualenv env &&
+    source env/bin/activate &&
+    pip3 install -e . &&
+    deactivate
+  args:
+    chdir: "/opt/vcmts/tools/vcmts-pm"
+    executable: /bin/bash
+  when: "'tg' in group_names"
+
+- name: Restart systemd-networkd
+  service:
+    name: systemd-networkd
+    state: restarted
+  when: ansible_distribution == "Ubuntu"
+
+- name: set service status facts
+  service_facts:
+  when:
+    - ansible_distribution == "Ubuntu"
+    - "'kube-node' in group_names"
+
+- name: get systemd-networkd service status and block if systemd-networkd service is not running
+  debug:
+      var: ansible_facts.services["systemd-networkd.service"]
+  failed_when:
+    - hostvars[inventory_hostname]['services']['systemd-networkd.service']['state'] != "running" or ansible_facts.services["systemd-networkd.service"] is not defined
+  when:
+    - ansible_distribution == "Ubuntu"
+    - "'kube-node' in group_names"
+
+- name: wait up to 30 min for host {{ item }} to answer
+  command: nslookup {{ item }}.{{ vcmts_domain }}
+  register: nslookup_answer
+  retries: 30
+  delay: 60
+  until: ("Name:" in nslookup_answer.stdout)
+  with_items: "{{ groups['kube-node'] }}"
+  when: inventory_hostname == groups['kube-master'][0] 
+
+# 2.3.1, 2.3.2 vCMTS & PKTGEN PLATFORM CONFIGURATION
+- name: vcmts/pktgen platform configuration
+  include: vcmts_platform_config.yml
+  any_errors_fatal: true
+
+# 2.6.1, 2.6.2, 2.6.3, 2.6.4, 2.7.1 INSTALL DP SW (OPENSSL CERTS, QAT, IPSec MB, DPDK)
+- name: install vcmts dataplane node software
+  include: vcmts_dp_sw_install.yml
+  any_errors_fatal: true
+
+# 2.6.5.2, 2.6.5.3, 2.6.5.4, 2.7.2.2, 2.7.2.3
+# BUILD DOCKER IMAGES CMK, SRIOV-DP, QAT, Power, Collectd, InfluxDB, Grafana, VCMTS, PKTGEN
+- name: build docker images
+  include: vcmts_docker_image_install.yml
+  when: vcmts_env_type == "kubernetes"
+  any_errors_fatal: true
+
+# 2.6.6.1 INSTALL BM TELEMETRY SW (COLLECTD, INFLUXDB, GRAFANA)
+# 2.6.6.2, 2.7.3.1 INSTALL BM vCMTS & PKTGEN
+- name: baremetal vcmts/pktgen app installation
+  include: vcmts_baremetal_install.yml
+  when: vcmts_env_type == "baremetal"
+  any_errors_fatal: true
+
+- debug:
+    msg: "vcmts-pm config-service-groups -u -i {{ vcmts_env_type }} -m {{ vcmts_mode }} -n {{vcmts_service_groups }} -x {{ vcmts_core_config }} -c {{ vcmts_channel_config }} -s {{ vcmts_subscribers }} -d {{ vcmts_crypto_config }} -v {{ vcmts_crc }} -q {{ vcmts_crypto_offload }} -f {{ vcmts_cpu_cycle_stats }} -z {{ vcmts_latency_stats }} -t {{ vcmts_traffic_type }}"
+
+# 2.8.1 CONFIGURE SERVICE GROUP OPTIONS
+- name: config service-groups using vcmts-pm cli
+  expect:
+    command: /bin/bash -c "source /opt/vcmts/tools/vcmts-env/env.sh && source env/bin/activate && vcmts-pm config-service-groups -u -i {{ vcmts_env_type }} -m {{ vcmts_mode }} -n {{vcmts_service_groups }} -x {{ vcmts_core_config }} -c {{ vcmts_channel_config }} -s {{ vcmts_subscribers }} -d {{ vcmts_crypto_config }} -v {{ vcmts_crc }} -q '{{ vcmts_crypto_offload }}' -f '{{ vcmts_cpu_cycle_stats }}' -z '{{ vcmts_latency_stats }}' -t {{ vcmts_traffic_type }} && deactivate"
+    responses:
+      'Is the above OK\? \[y/N\]:': 'y'
+      'Proceed with installation\? \[y/N\]:': 'y'
+    chdir: "/opt/vcmts/tools/vcmts-pm"
+    echo: yes
+    timeout: 120
+  register: vcmtsd_output
+  failed_when:
+    - "'Installation complete' not in vcmtsd_output.stdout"
+  when: "'tg' in group_names"
+  any_errors_fatal: true
+
+# Update K8S pod yaml files(CMK,...)
+- name: update k8s pod yaml files
+  include: vcmts_pod_yaml_updates.yml
+  when: vcmts_env_type == "kubernetes"
+  any_errors_fatal: true
+
+# 2.9.1 START APPLICATIONS / PODS
+- name: startup infrastructure (applications or pods)
+  include: vcmts_infra_startup.yml
+  any_errors_fatal: true
+
+- name: startup vcmts (application or pods)
+  include: vcmts_startup.yml
+  any_errors_fatal: true
+
+- name: startup pktgen (application or pods)
+  include: vcmts_pktgen_startup.yml
+  any_errors_fatal: true
+

@@ -1,0 +1,181 @@
+---
+- name: install dependencies
+  include_role:
+    name: install_dependencies
+
+- name: disable service firewalld after openness vcac-a installed
+  systemd:
+    name: firewalld
+    enabled: no
+  when: vcaca_enabled
+
+- name: stop firewalld if it is running
+  systemd:
+    state: stopped
+    name: firewalld
+  when: vcaca_enabled
+
+- name: copy nat scripts
+  copy:
+    src: "setup_nat.sh"
+    dest: "/home/vca"
+    mode: a+x
+  when:
+    - vcaca_enabled
+    - inventory_hostname in groups['edgenode_vca_group']
+
+- name: Add back nat using iptables
+  command: /home/vca/setup_nat.sh
+  when:
+    - vcaca_enabled
+    - inventory_hostname in groups['edgenode_vca_group']
+
+- name: update ulimits for docker daemon
+  replace:
+    path: "/etc/docker/daemon.json"
+    regexp: "{{ item.regex }}"
+    replace: "{{ item.replace }}"
+  with_items:
+    - { regex: "(.*Hard\":).*(,)$", replace: "\\1 65535\\2" }
+    - { regex: "(.*Soft\":).*$", replace: "\\1 65535" }
+
+- name: restart docker service
+  service:
+    name: docker
+    state: restarted
+    daemon_reload: yes
+
+- name: wait for kubernetes service to be accessible
+  wait_for:
+    port: 6443
+    delay: 10
+  when:
+    - inventory_hostname == groups['controller_group'][0]
+
+- name: delete OpenNESS network policies
+  k8s:
+    api_version: networking.k8s.io/v1
+    kind: NetworkPolicy
+    state: absent
+    name: block-all-ingress
+    namespace: default
+  ignore_errors: yes
+  when:
+    - smtc_enabled or ad_insertion_enabled
+    - inventory_hostname == groups['controller_group'][0]
+
+- name: attach office dataplane(s) to the cluster
+  command: "kubectl interfaceservice attach {{ item }} 0000:{{ hostvars[groups['edgenode_group'][(index)]]['sriov_nics[0].bus_info'] }}"
+  loop: "{{ groups['edgenode_group'] }}"
+  loop_control:
+    index_var: index
+  when:
+    - smtc_enabled
+    - openness_external_dataplane
+    - inventory_hostname == groups['controller_group'][0]
+
+- name: re-enable dataplane interface
+  command: "ip link set {{ sriov_nics[0].name }} up"
+  when:
+    - smtc_enabled
+    - openness_external_dataplane
+    - "'edgenode_group' in group_names"
+
+- name: pull hddl daemon image on vca host
+  docker_image:
+    name: openvisualcloud/vcaca-ubuntu1804-analytics-hddldaemon
+    tag: "20.4"
+    source: pull
+  when:
+    - smtc_enabled
+    - inventory_hostname in groups['edgenode_vca_group']
+    - smtc_platform == "VCAC-A"
+
+- name: copy hddldaemon docker image to vcac-a node
+  shell: for ip in $(sudo vcactl config-show | grep "ip:" | grep -v host | awk '{print $2}'); do docker save openvisualcloud/vcaca-ubuntu1804-analytics-hddldaemon | ssh root@$ip "docker load"; done
+  when:
+    - smtc_enabled
+    - inventory_hostname in groups['edgenode_vca_group']
+    - smtc_platform == "VCAC-A" 
+
+- name: start hddl daemon on vcac-node
+  k8s:
+    state: present
+    definition: "{{ lookup('file', '../files/setup_hddl_daemonset.yaml') | from_yaml }}"
+  when:
+    - smtc_enabled
+    - inventory_hostname == groups['controller_group'][0]
+    - smtc_platform == "VCAC-A"
+
+- name: deploy smtc on OpenNESS
+  include_tasks: smtc.yml
+  when: smtc_enabled
+
+- name: get generated openness pod names
+  k8s_info:
+    kind: Pod
+    namespace: "{{ item }}"
+  register: generated_pods
+  with_items:
+    - "{{ system_namespace }}"
+    - "{{ ovn_namespace }}"
+    - "{{ openness_namespace }}"
+  when: 
+    - inventory_hostname == groups['controller_group'][0]
+
+- name: wait for pod {{ podName }} to become ready
+  k8s:
+    kind: Pod
+    name: "{{ podName }}"
+    namespace: "{{ system_namespace }}"
+    wait: yes
+    wait_condition:
+      status: yes
+      type: ContainersReady
+  vars:
+    podName: "{{ item.metadata.name }}"
+    podType: "{{ item.metadata.ownerReferences[0].kind }}"
+  with_items:
+    - "{{ generated_pods.results[0].resources }}"
+  when: 
+    - inventory_hostname == groups['controller_group'][0]
+    - podName |length > 0
+    - podType != "Job"
+
+- name: wait for pod {{ podName }} to become ready
+  k8s:
+    kind: Pod
+    name: "{{ podName }}"
+    namespace: "{{ ovn_namespace }}"
+    wait: yes
+    wait_condition:
+      status: yes
+      type: ContainersReady
+  vars:
+    podName: "{{ item.metadata.name }}"
+    podType: "{{ item.metadata.ownerReferences[0].kind }}"
+  with_items:
+    - "{{ generated_pods.results[1].resources }}"
+  when: 
+    - inventory_hostname == groups['controller_group'][0]
+    - podName |length > 0
+    - podType != "Job"
+
+- name: wait for pod {{ podName }} to become ready
+  k8s:
+    kind: Pod
+    name: "{{ podName }}"
+    namespace: "{{ openness_namespace }}"
+    wait: yes
+    wait_condition:
+      status: yes
+      type: ContainersReady
+  vars:
+    podName: "{{ item.metadata.name  }}"
+    podType: "{{ item.metadata.ownerReferences[0].kind }}"
+  with_items:
+    - "{{ generated_pods.results[2].resources }}"
+  when: 
+    - inventory_hostname == groups['controller_group'][0]
+    - podName |length > 0
+    - podType != "Job"

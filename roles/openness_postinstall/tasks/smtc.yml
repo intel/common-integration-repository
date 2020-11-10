@@ -1,0 +1,154 @@
+---
+- set_fact:
+    connector_host_ip: "{{ hostvars[groups['kube-master'][0]].ip }}"
+    connector_host_user: "{{ hostvars[groups['kube-master'][0]].ansible_user }}"
+    connector_host_password: "{{ hostvars[groups['kube-master'][0]].ansible_password }}"
+
+- name: clone and build Smart-City
+  import_role:
+    name: smart_city_make
+
+- name: apply office labels to nodes based on inventory & group configuration
+  import_role:
+    name: k8s_labels
+  vars:
+    provided_labels: "{{ office_labels }}"
+  when:
+    - inventory_hostname == groups['controller_group'][0]
+
+#--------comment until connector_camera supported in smtc---------
+
+#- name: create camera_ip_list
+#  set_fact:
+#    camera_ip_list: []
+#  when:
+#    - smtc_enabled
+#    - inventory_hostname == groups['controller_group'][0]
+#
+#- name: add ip value to the camera_ip_list
+#  set_fact:
+#    camera_ip_list: "{{ camera_ip_list + [ hostvars[groups['cameras'][(index)]]['ip'] ] }}"
+#  loop: "{{ groups['cameras'] }}"
+#  loop_control:
+#    index_var: index
+#  when:
+#    - smtc_enabled
+#    - not openness_external_dataplane
+#    - inventory_hostname == groups['controller_group'][0]
+#
+#- name: add camera_ip value to the camera_ip_list
+#  set_fact:
+#    camera_ip_list: "{{ camera_ip_list + [ hostvars[groups['cameras'][(index)]]['camera_ip'] ] }}"
+#  loop: "{{ groups['cameras'] }}"
+#  loop_control:
+#    index_var: index
+#  when:
+#    - smtc_enabled
+#    - openness_external_dataplane
+#    - inventory_hostname == groups['controller_group'][0]
+#
+#- name: join the camera_ip_list to get camera ip string
+#  set_fact:
+#    camera_ip_string: "{{ camera_ip_list | join(',') }}"
+#  when:
+#    - smtc_enabled
+#    - inventory_hostname == groups['controller_group'][0]
+#
+#- name: export openness env vars
+#  lineinfile:
+#    path: /etc/environment
+#    state: present
+#    regexp: '^{{ item.name }}'
+#    line: '{{ item.name }}={{ item.value }}'
+#    create: yes
+#    owner: root
+#    group: root
+#    mode: 0644
+#  with_items:
+#    - { name: "CAMERA_HOSTS", value: "{{ camera_ip_string }}" }
+#    - { name: "CLOUD_HOST", value: "{{ hostvars[groups['kube-master'][0]]['ip'] }}" }
+#  when:
+#    - smtc_enabled
+#    - inventory_hostname == groups['controller_group'][0]
+
+- name: copy traffic/stadium object analytics docker image to vcac-a node
+  shell: for ip in $(sudo vcactl config-show | grep "ip:" | grep -v host | awk '{print $2}'); do docker save smtc_analytics_object_vcac-a_{{ smtc_framework }} | ssh root@$ip "docker load" ; done
+  args:
+    executable: /bin/bash
+  when:
+    - inventory_hostname in groups['edgenode_vca_group']
+    - smtc_platform == "VCAC-A"
+
+- name: copy stadium entrance analytics docker image to vcac-a node
+  shell: for ip in $(sudo vcactl config-show | grep "ip:" | grep -v host | awk '{print $2}'); do docker save smtc_analytics_entrance_vcac-a_{{ smtc_framework }} | ssh root@$ip "docker load"; done
+  when:
+    - inventory_hostname in groups['edgenode_vca_group']
+    - smtc_platform == "VCAC-A"
+    - smtc_scenario == "stadium"
+
+- name: copy stadium crowd analytics docker image to vcac-a node
+  shell: for ip in $(sudo vcactl config-show | grep "ip:" | grep -v host | awk '{print $2}'); do docker save smtc_analytics_crowd_vcac-a_{{ smtc_framework }} | ssh root@$ip "docker load"; done
+  when:
+    - inventory_hostname in groups['edgenode_vca_group']
+    - smtc_platform == "VCAC-A"
+    - smtc_scenario == "stadium"
+
+# -----tty workaround for Berta-----
+- name: patch docker run/exec TTY cmd line args (TEMP WORKAROUND)
+  replace:
+    path: "{{ smtc_dir }}/script/shell.sh"
+    regexp: "(.*)-it(.*)$"
+    replace: "\\1-i\\2"
+  when:
+    - disable_docker_tty
+
+- name: skip host key check when tty disabled
+  replace:
+    path: "{{ smtc_dir }}/deployment/tunnel/create-key.sh"
+    regexp: "(.*)StrictHostKeyChecking=ask(.*)$"
+    replace: "\\1StrictHostKeyChecking=no\\2"
+  when:
+    - disable_docker_tty
+
+- name: Create tunnel key directory if it does not exist
+  file:
+    path: "{{ smtc_dir }}/deployment/tunnel/.key"
+    state: directory
+    mode: '0700'
+  when:
+    - inventory_hostname == groups['controller_group'][0]
+    - disable_docker_tty
+
+- name: skip key generation by copy host key
+  copy:
+    src: "/root/.ssh/{{ item }}"
+    dest: "{{ smtc_dir }}/deployment/tunnel/.key/{{ item }}"
+    remote_src: yes
+  with_items:
+    - id_rsa
+    - id_rsa.pub
+  when:
+    - inventory_hostname == groups['controller_group'][0]
+    - disable_docker_tty
+
+- name: change mode of private key file
+  file:
+    path: "{{ smtc_dir }}/deployment/tunnel/.key/id_rsa"
+    mode: '0600'
+  when:
+    - inventory_hostname == groups['controller_group'][0]
+    - disable_docker_tty
+#-------------------------
+
+- name: start smart-city openness office pods
+  expect:
+    command: /bin/bash -c "SCOPE={{ item }} CONNECTOR_CLOUD={{ connector_host_user }}@{{ connector_host_ip }} make start_helm"
+    responses:
+      Are you sure you want to continue(.*): "yes"
+      (.*)'s password(.*): "{{ connector_host_password }}"
+    chdir: "{{ smtc_dir }}/build"
+    timeout: 15
+  with_sequence: start=1 end={{ smtc_num_offices }} stride=1 format="office%01d"
+  when:
+    - inventory_hostname == groups['controller_group'][0]
+

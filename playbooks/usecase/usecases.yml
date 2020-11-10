@@ -1,57 +1,35 @@
 ---
-# installs Visual Cloud and Edge Use Cases
+# install workloads
+- hosts: kube-node
+  tasks: []
+  roles:
+    - role: cluster_defaults
+      tags: defaults
+  environment: "{{ proxy_env | d({}) }}"
+  any_errors_fatal: true
 
 - hosts: k8s-cluster
   tasks: []
   roles:
-    - role: cluster-defaults
+    - role: cluster_defaults
       tags: defaults
-    - role: cdn-transcode-install
+    - role: cdn_transcode_install
       tags: cdn-install
       when: cdn_transcode_enabled | default(false)
-    - role: ad-insertion-install
+    - role: ad_insertion_install
       tags: ad-insert-install
       when: ad_insertion_enabled | default(false) 
-    - role: smart-city-install
+    - role: smart_city_install
       when: smtc_enabled | default(false)
-  environment: "{{ proxy_env | d({}) }}"
-
-- hosts: cameras
-  tasks: []
-  roles:
-    - role: cluster-defaults
-      tags: defaults
-    - role: smart-city-camera-net-config
-      when: openness_external_dataplane | default(false)
-    - role: smart-city-camera-init
-      when: openness_enabled | default(false)
+    - role: vcmts_install
+      when: vcmts_enabled | default (false)
   environment: "{{ proxy_env | d({}) }}"
 
 - hosts: openness-cluster
   tasks: []
   roles:
-    - role: cluster-defaults
-      tags: defaults
-    - role: openness-preinstall
-      when: openness_enabled | default(false)
-  environment: "{{ proxy_env | d({}) }}"
-
-- hosts: localhost
-  connection: local
-  tasks: []
-  roles:
-    - role: cluster-defaults
-      tags: defaults
-    - role: openness-preconfigure-playbooks
-      when: openness_enabled | default(false)
-  environment: "{{ proxy_env | d({}) }}"
-
-- name: OpenNESS NE install (CURRENT)
-  import_playbook: "../openness-current/network_edge.yml"
-  when: openness_current_enabled | default (false)
-
-- hosts: openness-cluster
-  tasks: []
-  roles:
-    - role: openness-postinstall
+    - role: ad_insertion_install
+      tags: ad-insert-install
+      when: openness_enabled | default(false) and ad_insertion_enabled | default(false)
+    - role: openness_postinstall
       when: openness_enabled | default(false)

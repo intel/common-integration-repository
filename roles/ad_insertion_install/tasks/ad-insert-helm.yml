@@ -1,0 +1,103 @@
+---
+- name: copy the pv yaml files into helm dir
+  copy: 
+    src: "{{ ad_insertion_k8s_dir }}/{{ item }}"
+    dest: "{{ ad_insertion_helm_templates_dir }}"
+    remote_src: yes
+  with_items:
+    - "ad-archive-pv.yaml"
+    - "ad-cache-pv.yaml"
+    - "ad-segment-pv.yaml"
+    - "ad-static-pv.yaml"
+    - "video-archive-pv.yaml"
+    - "video-cache-pv.yaml"
+  when:
+    - inventory_hostname == (k8s_master)
+
+- name: copy ADI helm chart to the master node
+  copy:
+    src: "{{ ad_insertion_helm_dir }}"
+    dest: "/usr/src/charts/ad-insertion"
+    remote_src: yes
+  when:
+    - inventory_hostname == (k8s_master)
+
+- name: copy adi helm chart values file and push to master node
+  copy:
+    src: "/usr/src/charts/ad-insertion/values.yaml"
+    dest: "/usr/src/charts/adi-values.yml"
+    remote_src: yes
+  when:
+    - inventory_hostname == (k8s_master)
+
+- name: get ad_insertion deploy status
+  shell: "helm list |grep AD-Insertion-Sample |grep ad-insertion |grep {{ ad_insertion_namespace }} |wc -l"
+  args:
+    executable: /bin/bash
+  register: adi_deploy_status
+  when:
+    - inventory_hostname == (k8s_master)
+
+- name: uninstall the adi old_version if exists
+  command: "helm uninstall ad-insertion -n {{ ad_insertion_namespace }}"
+  when:
+    - inventory_hostname == (k8s_master)
+    - adi_deploy_status.stdout |int == 1
+
+- name: delete the adi secret if exists
+  k8s:
+    state: absent
+    api_version: v1
+    namespace: "{{ ad_insertion_namespace }}"
+    kind: secret
+    name: self-signed-certificate
+  when:
+    - inventory_hostname == (k8s_master)
+    - adi_deploy_status.stdout |int == 1
+
+- name: wait 90s for kubectl delete resource complete
+  wait_for:
+    timeout: 90
+  when:
+    - inventory_hostname == (k8s_master)
+    - adi_deploy_status.stdout |int == 1
+
+- name: generate certificate file
+  command: "/bin/bash self-sign.sh"
+  args:
+    chdir: "{{ ad_insertion_cert_dir }}"
+  when:
+    - inventory_hostname == (k8s_master)
+
+- name: get ad-insertion secert file value for crt
+  shell: "cat {{ ad_insertion_cert_dir }}/self.crt |base64 -w0"
+  register: ad_insertion_cert_crt
+  when:
+    - inventory_hostname == (k8s_master)
+
+- name: get ad-insertion secert file value for key
+  shell: "cat {{ ad_insertion_cert_dir }}/self.key |base64 -w0"
+  register: ad_insertion_cert_key
+  when:
+    - inventory_hostname == (k8s_master)
+
+- name: create ad-insertion secert
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: secret
+      type: Opaque
+      metadata:
+        name: self-signed-certificate
+        namespace: "{{ ad_insertion_namespace }}"
+      data:
+        self.crt: "{{ ad_insertion_cert_crt.stdout }}"
+        self.key: "{{ ad_insertion_cert_key.stdout }}"
+  when:
+    - inventory_hostname == (k8s_master)
+
+- name: helm install adi-insertion
+  command: helm upgrade -i ad-insertion --namespace {{ ad_insertion_namespace }} -f /usr/src/charts/adi-values.yml /usr/src/charts/ad-insertion
+  when:
+    - inventory_hostname == (k8s_master)

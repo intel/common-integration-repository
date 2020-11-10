@@ -1,0 +1,5 @@
+---
+smtc_git_url: "https://github.com/OpenVisualCloud/Smart-City-Sample.git"
+smtc_default_version: "master"
+smtc_openness_version: "openness-k8s"
+smtc_version: "{{ smtc_default_version }}"

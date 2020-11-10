@@ -1,0 +1,162 @@
+---
+- name: install dependencies
+  include_role:
+    name: install_dependencies
+
+#version installed by ansible_pkg_mgr through install_dependencies is too old
+- name: install pexpect
+  pip:
+    name: "{{ pexpect_package }}"
+    state: present
+
+- name: clone CDN-Transcode repository
+  git:
+    repo: "{{ cdn_transcode_git_url }}"
+    dest: "{{ cdn_transcode_dir }}"
+    version: "{{ cdn_transcode_version }}"
+    force: true
+
+- name: create cdn_transcode build directory
+  file:
+    path: "{{ cdn_transcode_dir }}/build"
+    state: directory
+
+- name: patch docker build TTY cmd line args (TEMP WORKAROUND)
+  replace:
+    path: "{{ cdn_transcode_dir }}/script/build.sh"
+    regexp: "(.*)-t(.*)$"
+    replace: "\\1--progress=plain -t\\2"
+  when: disable_docker_tty
+
+- name: patch docker run/exec TTY cmd line args (TEMP WORKAROUND)
+  replace:
+    path: "{{ cdn_transcode_dir }}/script/shell.sh"
+    regexp: "(.*)-it(.*)$"
+    replace: "\\1-i\\2"
+  when: disable_docker_tty
+
+- debug:
+    msg: "cmake -DNVODS={{ cdn_vod_num }} -DNLIVES={{ cdn_live_num }} -DREGISTRY={{ cdn_image_registry }} {{ cdn_transcode_dir }}"
+
+- name: configure cdn_transcode makefiles
+  command: "cmake -DNVODS={{ cdn_vod_num }} -DNLIVES={{ cdn_live_num }} -DREGISTRY={{ cdn_image_registry }} {{ cdn_transcode_dir }}"
+  args:
+    chdir: "{{ cdn_transcode_dir }}/build"
+  changed_when: True
+
+- name: build cdn_transcode images
+  make:
+    chdir: "{{ cdn_transcode_dir }}/build"
+
+- name: update service-node-port-range in /etc/kubernetes/manifests/kube-apiserver.yaml
+  lineinfile:
+    dest: /etc/kubernetes/manifests/kube-apiserver.yaml
+    regexp: '    - --service-node-port-range=(.*-)(.*)'
+    line: '    - --service-node-port-range={{ cdn_transcode_service_node_port_range }}'
+    state: present
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: restart kubelet service
+  service:
+    name: kubelet
+    state: restarted  
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: sleep for 30 seconds to allow kubelet time to restart
+  wait_for:
+    timeout: 30
+  delegate_to: localhost
+
+- name: check master ssh key status
+  shell: ls |grep ^id_rsa.pub$ |wc -l
+  args:
+    chdir: /root/.ssh
+    executable: /bin/bash
+  register: master_key_status
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: generate master ssh key pair if not exists
+  user:
+    name: root
+    generate_ssh_key: yes
+    ssh_key_type: rsa
+    ssh_key_file: "/root/.ssh/id_rsa"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+    - master_key_status.stdout |int == 0
+
+- name: get master key value
+  command: "cat id_rsa.pub"
+  args:
+    chdir: /root/.ssh
+  register: master_key_value_tmp
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: register and format new vars for all nodes
+  set_fact:
+    master_key_value: "{{ hostvars[groups['kube-master'][0]]['master_key_value_tmp']['stdout'] }}"
+
+- name: append master ssh-key-pub into  authorized_keys for all (kube-node)s
+  authorized_key:
+    user: root
+    state: present
+    key: "{{ master_key_value }}"
+  when:
+    - inventory_hostname in groups['kube-node']
+
+- name: configure cdn_transcode volumes
+  expect:
+    command: make volume
+    responses:
+      Are you sure you want to continue(.*): "yes"
+    chdir: "{{ cdn_transcode_dir }}/build"
+    timeout: 15
+  register: expect_output
+  failed_when: "'Built target volume' not in expect_output.stdout"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: deployment CDN by helm
+  include: "cdn-transcode-helm.yml"
+  when: cdn_transcode_helm_enabled
+
+
+- name: start cdn_transcode pods
+  make:
+    target: start_kubernetes
+    chdir: "{{ cdn_transcode_dir }}/build"
+  when:
+    - inventory_hostname == groups['kube-master'][0]
+    - not cdn_transcode_helm_enabled
+
+- name: get generated cdn pod names
+  k8s_info:
+    kind: Pod
+    namespace: "{{ cdn_transcode_namespace }}"
+  register: generated_pods
+  when:
+    - cdn_transcode_enabled
+    - inventory_hostname == groups['kube-master'][0]
+
+- name: wait for pod {{ podName }} to become ready
+  k8s:
+    kind: Pod
+    name: "{{ podName }}"
+    namespace: "{{ cdn_transcode_namespace }}"
+    wait: yes
+    wait_condition:
+      status: yes
+      type: ContainersReady
+  vars:
+    podName: "{{ item.metadata.name }}"
+  with_items: 
+    - "{{ generated_pods.resources }}"
+  when: 
+    - cdn_transcode_enabled 
+    - inventory_hostname == groups['kube-master'][0]
+    - podName |length > 0
+

@@ -1,0 +1,127 @@
+---
+- name: Hosts | create list from inventory
+  set_fact:
+    etc_hosts_inventory_block: |-
+      {% for item in (groups['all']|default([]))|unique -%}
+      {% if ('ansible_hostname' in hostvars[item]) -%}
+      {% if 'access_ip' in hostvars[item] or 'ip' in hostvars[item] or 'ansible_default_ipv4' in hostvars[item] -%}
+      {{ hostvars[item]['access_ip'] | default(hostvars[item]['ip'] | default(hostvars[item]['ansible_default_ipv4']['address'])) }} {{ item }}.{{ vcmts_domain }}
+      {% endif %}
+      {% endif %}
+      {% endfor %}
+  delegate_to: localhost
+  connection: local
+  delegate_facts: yes
+  run_once: yes
+
+- name: Hosts | populate inventory into hosts file
+  blockinfile:
+    path: /etc/hosts
+    block: "{{ hostvars.localhost.etc_hosts_inventory_block }}"
+    state: present
+    create: yes
+    backup: yes
+    unsafe_writes: yes
+    marker: "# Ansible inventory hosts {mark}"
+
+- name: Replace a localhost entry with our own, remove others
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.0\.1'
+    line: 127.0.0.1 localhost.localdomain localhost
+
+- name: set no_proxy settings again in vcmts proxy.sh with domain added
+  replace:
+    path: "/opt/vcmts/tools/vcmts-env/proxy.sh"
+    regexp: 'export no_proxy=.*$'
+    replace: "export no_proxy={{ proxy_env.no_proxy }},{{ groups['tg'][0] }}.{{ vcmts_domain }},{{ groups['dp'][0] }}.{{ vcmts_domain }}"
+
+- name: install baremetal collectd
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_baremetal_collectd
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+- name: start collectd service
+  service:
+    name: collectd
+    state: started
+  when: "'dp' in group_names"
+
+- name: install baremetal influxdb
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_baremetal_influxdb
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+- name: fix no influxdb.conf issue
+  copy:
+    src: /opt/vcmts/telemetry/influxdb/influxdb.conf
+    dest: /opt/influxdb/influxdb.conf
+    remote_src: yes
+  when: "'dp' in group_names"
+
+- name: start influxdb service
+  service:
+    name: influxdb
+    state: started
+  when: "'dp' in group_names"
+
+- name: install baremetal grafana
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_baremetal_grafana
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+- name: start grafana service
+  service:
+    name: grafana-server
+    state: started
+  when: "'dp' in group_names"
+
+- name: get service facts
+  service_facts:
+  register: service_info
+  when: "'dp' in group_names"
+
+- debug:
+    var: service_info.ansible_facts.services['collectd.service'].state
+  failed_when: service_info.ansible_facts.services['collectd.service'].state == "VARIABLE IS NOT DEFINED!"
+  when: "'dp' in group_names"
+
+- debug:
+    var: service_info.ansible_facts.services['influxdb.service'].state
+  failed_when: service_info.ansible_facts.services['influxdb.service'].state == "VARIABLE IS NOT DEFINED!"
+  when: "'dp' in group_names"
+
+- debug:
+    var: service_info.ansible_facts.services['grafana-server.service'].state
+  failed_when: service_info.ansible_facts.services['grafana-server.service'].state == "VARIABLE IS NOT DEFINED!"
+  when: "'dp' in group_names"
+
+- name: install baremetal vcmts dataplane application
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_baremetal_vcmtsd
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+- name: install baremetal pktgen application
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_baremetal_pktgen
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'tg' in group_names"

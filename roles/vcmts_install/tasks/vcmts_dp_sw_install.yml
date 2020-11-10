@@ -1,0 +1,64 @@
+---
+- name: generate openssl certificates
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    generate_openssl_certs
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  register: cert_output
+  failed_when: "'Error generating' in cert_output.stdout"
+  when: "'dp' in group_names"
+
+- name: install QAT drivers to vcmts dataplane server
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    install_qat_drivers
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+- name: install IPSec MB Library to vcmts dataplane server
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_baremetal_ipsec_mb
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'dp' in group_names"
+
+- name: Check for existing dpdk installation
+  find:
+    paths: "/usr/src"
+    depth: 1
+    file_type: directory
+    patterns: "dpdk*"
+  register: dpdk_dir
+  when:
+    - "'kube-node' in group_names"
+    - vcmts_env_type == "kubernetes"
+
+- debug:
+    msg: "{{ dpdk_dir.files[0].path }}"
+  when: 
+    - "'kube-node' in group_names"
+    - vcmts_env_type == "kubernetes"
+
+- name: Create symbolic link to existing dpdk installation
+  file:
+    src: "{{ dpdk_dir.files[0].path }}"
+    dest: "/opt/dpdk"
+    state: link
+  when: 
+    - "'kube-node' in group_names"
+    - vcmts_env_type == "kubernetes"
+
+- name: install DPDK to pktgen and vcmts dataplane servers
+  shell: >
+    source /opt/vcmts/tools/vcmts-env/env.sh &&
+    build_baremetal_dpdk
+  args:
+    chdir: "/opt"
+    executable: /bin/bash
+  when: "'kube-node' in group_names"
