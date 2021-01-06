@@ -1,0 +1,26 @@
+--- roles/ad_insertion_install/tasks/main.yml	2020-11-26 12:11:57.368103744 +0800
++++ roles/ad_insertion_install/tasks/main.yml.edit	2020-11-26 17:43:05.568547298 +0800
+@@ -58,6 +58,23 @@
+     chdir: "{{ ad_insertion_dir }}/build"
+   changed_when: True
+ 
++- name: replace ad_insertion Dockerfile
++  shell: |
++    for i in `grep -rn "apt-get update" |awk -F ":" '{ print $1 }' |uniq`; do sed -i 's@apt-get update@sed -i 's#archive.ubuntu.com#mirrors.tuna.tsinghua.edu.cn#' /etc/apt/sources.list \&\& &@g' $i; done
++
++    for i in `grep -rn "pip3 install" |awk -F ":" '{ print $1 }' |uniq`; do sed -i 's#pip3 install#pip3 install -i https:\/\/pypi.tuna.tsinghua.edu.cn\/simple#g' $i; done
++
++    sed -i '21 a\                    echo "151.101.8.133     raw.githubusercontent.com" >> /etc/hosts' content-provider/archive/build.sh
++
++    for i in `grep -rn "elasticsearch-oss" |awk -F':' '{print $1}'|uniq`; do sed -i 's@docker.elastic.co/@@g' $i; done
++
++    touch /usr/src/ad-insertion/ADI_Dockerfile_Change
++
++  args:
++    chdir: /usr/src/ad-insertion/
++    executable: /bin/bash
++    creates: /usr/src/ad-insertion/ADI_Dockerfile_Change
++
+ - name: build ad_insertion images
+   make:
+     chdir: "{{ ad_insertion_dir }}/build"

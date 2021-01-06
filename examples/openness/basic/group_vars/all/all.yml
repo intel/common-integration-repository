@@ -5,6 +5,23 @@ kube_version: v1.18.8
 #kube_version: v1.17.11
 #kube_version: v1.16.14
 
+#Add for deploy on PRC#
+_kubernetes_repository_url: "https://mirrors.tuna.tsinghua.edu.cn/kubernetes/yum/repos/kubernetes-el7-x86_64/"
+_docker_repository_url: "https://mirrors.cloud.tencent.com/docker-ce/linux/centos/7/$basearch/stable"
+_docker_repository_key: "https://mirrors.cloud.tencent.com/docker-ce/linux/centos/gpg"
+_vca_node_docker_packages_url:
+  - "https://mirrors.cloud.tencent.com/docker-ce/linux/ubuntu/dists/xenial/pool/stable/amd64/containerd.io_1.2.13-2_amd64.deb"
+  - "https://mirrors.cloud.tencent.com/docker-ce/linux/ubuntu/dists/xenial/pool/stable/amd64/docker-ce-cli_19.03.12~3-0~ubuntu-xenial_amd64.deb"
+  - "https://mirrors.cloud.tencent.com/docker-ce/linux/ubuntu/dists/xenial/pool/stable/amd64/docker-ce_19.03.12~3-0~ubuntu-xenial_amd64.deb"
+_docker_registry_mirrors:
+  - https://mirror.ccs.tencentyun.com
+  - http://hub-mirror.c.163.com
+  # If you have deployed local docker cache service
+  - http://$your_local_docker_register_IP:5000
+
+#######################
+
+
 # Run system-wide package update (apt dist-upgrade, yum update, ...)
 # Note: enabling this may lead to unexpected results
 # Tip: you can set this per host using host_vars
@@ -62,12 +79,13 @@ example_net_attach_defs:
   sriov_net_dp: false
 
 # Intel Device Plugins for Kubernetes
-vcaca_enabled: false
+vcaca_enabled: true
 
 ## Proxy configuration ##
 #http_proxy: "http://proxy.example.com:1080"
 #https_proxy: "http://proxy.example.com:1080"
 #additional_no_proxy: ".example.com"
+
 
 # (Ubuntu only) disables DNS stub listener which may cause issues on Ubuntu
 dns_disable_stub_listener: true

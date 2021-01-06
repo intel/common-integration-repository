@@ -1,0 +1,436 @@
+diff -Nrua playbooks/orchestration/openness-current/group_vars/controller_group/10-default.yml playbooks/orchestration/openness-current-edit/group_vars/controller_group/10-default.yml
+--- playbooks/orchestration/openness-current/group_vars/controller_group/10-default.yml	2020-12-23 13:35:19.216593543 +0800
++++ playbooks/orchestration/openness-current-edit/group_vars/controller_group/10-default.yml	2020-12-23 13:38:28.873607322 +0800
+@@ -59,7 +59,7 @@
+ 
+ # Packages to be installed on the Edge Controller host
+ os_yum_base_packages:
+-  "git2u-all,jq,vim-common,curl,yum-utils,python2-pip,python3,wget,bridge-utils,rsync,\
++  "git,jq,vim-common,curl,yum-utils,python2-pip,python3,wget,bridge-utils,rsync,\
+   device-mapper-persistent-data,lvm2,moreutils,gcc,python-devel,createrepo,psmisc,bash-completion,patch,openssl11"
+ 
+ ## URLs to docker images saved with `docker save <image>:<ver> | gzip > <image>.tar.gz` that are going to be preloaded after docker setup
+diff -Nrua playbooks/orchestration/openness-current/group_vars/edgenode_group/10-default.yml playbooks/orchestration/openness-current-edit/group_vars/edgenode_group/10-default.yml
+--- playbooks/orchestration/openness-current/group_vars/edgenode_group/10-default.yml	2020-12-23 13:35:19.217593543 +0800
++++ playbooks/orchestration/openness-current-edit/group_vars/edgenode_group/10-default.yml	2020-12-23 13:38:28.873607322 +0800
+@@ -75,7 +75,7 @@
+ # Packages to be installed on the Edge Node host
+ os_yum_base_packages:
+   "vim-common,curl,yum-utils,device-mapper-persistent-data,lvm2,python2-pip,python3,wget,bridge-utils,\
+-  boost-devel,openssl-devel,pcre-devel,zlib-devel,glib2-devel,autoconf,automake,libtool,flex,bison,git2u-all,cmake,pciutils,\
++  boost-devel,openssl-devel,pcre-devel,zlib-devel,glib2-devel,autoconf,automake,libtool,flex,bison,git,cmake,pciutils,\
+   python-websocket-client,jsoncpp-devel,fcgi-devel,hiredis-devel,numactl-devel,gcc-c++,psmisc,python-httplib2,pixman-devel,\
+   moreutils,jq,python-devel,createrepo,psmisc,bash-completion,rsync,openssl11"
+ _os_yum_exclude_rpm_packages: "exclude=kernel-3* kernel-rt* kernel-rt-kvm* kernel-rt-devel*"
+diff -Nrua playbooks/orchestration/openness-current/network_edge.yml playbooks/orchestration/openness-current-edit/network_edge.yml
+--- playbooks/orchestration/openness-current/network_edge.yml	2020-12-23 13:35:19.218593543 +0800
++++ playbooks/orchestration/openness-current-edit/network_edge.yml	2020-12-23 13:38:28.874607322 +0800
+@@ -20,18 +20,18 @@
+       when: ntp_enable | default(False)
+     - role: time/verify
+       when: "'edgenode_group' in group_names"
+-    - role: machine_setup/custom_kernel
+-      when: not (kernel_skip | default(True))
++#    - role: machine_setup/custom_kernel
++#      when: not (kernel_skip | default(True))
+     - role: machine_setup/grub
+ 
+-    - role: machine_setup/configure_tuned
+-      when: "not (tuned_skip | default(False)) and 'edgenode_group' in group_names"
++#    - role: machine_setup/configure_tuned
++#      when: "not (tuned_skip | default(False)) and 'edgenode_group' in group_names"
+     - role: machine_setup/conditional_reboot
+ 
+-    - role: git_repo
++#    - role: git_repo
+     - role: golang
+     - role: docker
+-    - role: dependency_build
++#    - role: dependency_build
+ 
+ # Playbook for Network Edge deployment
+ - hosts: controller_group
+@@ -40,73 +40,73 @@
+     - role: docker_registry/controlplane
+     - role: kubernetes/helm
+     - role: kubernetes/cni
+-    - role: kubernetes/device_plugins
+-      when: k8s_device_plugins_enable | default(False)
+-    - role: kubernetes/dashboard
+-      when: kubernetes_dashboard_enable | default(False)
+-
+-    - role: kafka
+-
+-    - role: openness/controlplane
+-    - role: kubevirt/controlplane
+-      when: kubevirt_enable | default(True)
+-
+-    - role: telemetry/certs
+-    - role: telemetry/prometheus
+-    - role: telemetry/opentelemetry/controlplane
+-    - role: telemetry/collectd/controlplane
+-    - role: telemetry/tas
+-    - role: telemetry/cadvisor/controlplane
+-
+-    - role: fpga_cfg
+-      when: fpga_sriov_userspace_enable | default(False)
+-    - role: opae_fpga/controlplane
+-      when: ne_opae_fpga_enable | default(False)
+-    - role: nfd
+-      when: ne_nfd_enable | default(True)
+-    - role: biosfw/controlplane
+-      when: ne_biosfw_enable | default(False)
+-    - role: cmk/controlplane
+-      when: ne_cmk_enable | default(False)
+-    - role: hddl/network_edge/controlplane
+-      when: ne_hddl_enable | default(False)
+-    - role: ptp/controlplane
+-      when: ptp_sync_enable | default(False)
+-
+-    - role: telemetry/grafana
+-      when: telemetry_grafana_enable | default(True)
+-    - role: telemetry/pcm/controlplane
+-      when: telemetry_pcm_enable | default(False)
++#    - role: kubernetes/device_plugins
++#      when: k8s_device_plugins_enable | default(False)
++#    - role: kubernetes/dashboard
++#      when: kubernetes_dashboard_enable | default(False)
++
++#    - role: kafka
++
++#    - role: openness/controlplane
++#    - role: kubevirt/controlplane
++#      when: kubevirt_enable | default(True)
++
++#    - role: telemetry/certs
++#    - role: telemetry/prometheus
++#    - role: telemetry/opentelemetry/controlplane
++#    - role: telemetry/collectd/controlplane
++#    - role: telemetry/tas
++#    - role: telemetry/cadvisor/controlplane
++
++#    - role: fpga_cfg
++#      when: fpga_sriov_userspace_enable | default(False)
++#    - role: opae_fpga/controlplane
++#      when: ne_opae_fpga_enable | default(False)
++#    - role: nfd
++#      when: ne_nfd_enable | default(True)
++#    - role: biosfw/controlplane
++#      when: ne_biosfw_enable | default(False)
++#    - role: cmk/controlplane
++#      when: ne_cmk_enable | default(False)
++#    - role: hddl/network_edge/controlplane
++#      when: ne_hddl_enable | default(False)
++#    - role: ptp/controlplane
++#      when: ptp_sync_enable | default(False)
++
++#    - role: telemetry/grafana
++#      when: telemetry_grafana_enable | default(True)
++#    - role: telemetry/pcm/controlplane
++#      when: telemetry_pcm_enable | default(False)
+ 
+-    - role: rmd/controlplane
+-      when: rmd_operator_enable | default(False)
++#    - role: rmd/controlplane
++#      when: rmd_operator_enable | default(False)
+ 
+ - hosts: edgenode_group
+   roles:
+-    - role: rmd/node
+-      when: rmd_operator_enable | default(False)
++#    - role: rmd/node
++#      when: rmd_operator_enable | default(False)
+ 
+-    - role: opae_fpga/node
+-      when: ne_opae_fpga_enable | default(False)
++#   - role: opae_fpga/node
++#      when: ne_opae_fpga_enable | default(False)
+     - role: kubernetes/node
+     - role: docker_registry/node
+     - role: kubernetes/cni
+-    - role: telemetry/collectd/node
+-    - role: telemetry/cadvisor/node
+-    - role: openness/node
+-    - role: kubevirt/node
+-      when: kubevirt_enable | default(True)
+-    - role: biosfw/node
+-      when: ne_biosfw_enable | default(False)
+-    - role: cmk/node
+-      when: ne_cmk_enable | default(False)
+-    - role: hddl/network_edge/node
+-      when: ne_hddl_enable | default(False)
+-    - role: ptp/node
+-      when: ptp_sync_enable | default(False)
++#    - role: telemetry/collectd/node
++#    - role: telemetry/cadvisor/node
++#    - role: openness/node
++#    - role: kubevirt/node
++#      when: kubevirt_enable | default(True)
++#    - role: biosfw/node
++#      when: ne_biosfw_enable | default(False)
++#    - role: cmk/node
++#      when: ne_cmk_enable | default(False)
++#    - role: hddl/network_edge/node
++#      when: ne_hddl_enable | default(False)
++#    - role: ptp/node
++#      when: ptp_sync_enable | default(False)
+ 
+-    - role: telemetry/pcm/node
+-      when: telemetry_pcm_enable | default(False)
++#    - role: telemetry/pcm/node
++#      when: telemetry_pcm_enable | default(False)
+ 
+ # Play for edge nodes that have VCAC-A card installed
+ - hosts: edgenode_vca_group
+@@ -125,7 +125,7 @@
+     - role: time/ntp
+       when: ntp_enable | default(False)
+     - role: time/verify
+-    - role: git_repo
++#    - role: git_repo
+     - role: golang
+     - role: docker
+     - role: machine_setup/vca_host_setup
+@@ -134,20 +134,20 @@
+     - role: kubernetes/node
+     - role: docker_registry/node
+     - role: kubernetes/cni
+-    - role: telemetry/collectd/node
+-    - role: telemetry/cadvisor/node
+-    - role: openness/node
+-    - role: telemetry/pcm/node
+-      when: telemetry_pcm_enable | default(False)
+-    - role: hddl/vca_setup
++#    - role: telemetry/collectd/node
++#    - role: telemetry/cadvisor/node
++#    - role: openness/node
++#    - role: telemetry/pcm/node
++#      when: telemetry_pcm_enable | default(False)
++#    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # - role: hddl/vca_setup
+ 
+ # Playbook for post Network Edge deployment
+ - hosts: controller_group
+   any_errors_fatal: true
+ 
+   roles:
+-    - role: istio
+-      when: ne_istio_enable | default(False)
++#   - role: istio
++#      when: ne_istio_enable | default(False)
+ 
+     - role: video_analytics_services
+       when: video_analytics_services_enable | default(False)
+diff -Nrua playbooks/orchestration/openness-current/roles/docker/tasks/main.yml playbooks/orchestration/openness-current-edit/roles/docker/tasks/main.yml
+--- playbooks/orchestration/openness-current/roles/docker/tasks/main.yml	2020-12-23 13:35:19.219593543 +0800
++++ playbooks/orchestration/openness-current-edit/roles/docker/tasks/main.yml	2020-12-23 13:38:28.879607323 +0800
+@@ -9,6 +9,7 @@
+     baseurl: "{{ _docker_repository_url }}"
+     gpgkey: "{{ _docker_repository_key }}"
+     gpgcheck: yes
++    repo_gpgcheck: no
+   register: result
+   retries: "{{ number_of_retries }}"
+   until: result is succeeded
+@@ -52,9 +53,12 @@
+       file:
+         path: /etc/docker/
+         state: directory
+-    - name: set cgroups driver to systemd
+-      copy:
+-        src: daemon.json
++    - name: set cgroups driver to systemd and set docker registry mirror
++#      copy:
++#        src: daemon.json
++#        dest: /etc/docker/daemon.json
++      template:
++        src: daemon.json.j2
+         dest: /etc/docker/daemon.json
+       notify:
+         - enable and start docker service
+diff -Nrua playbooks/orchestration/openness-current/roles/docker/templates/daemon.json.j2 playbooks/orchestration/openness-current-edit/roles/docker/templates/daemon.json.j2
+--- playbooks/orchestration/openness-current/roles/docker/templates/daemon.json.j2	1970-01-01 08:00:00.000000000 +0800
++++ playbooks/orchestration/openness-current-edit/roles/docker/templates/daemon.json.j2	2020-12-23 13:38:28.880607323 +0800
+@@ -0,0 +1,23 @@
++{
++  "registry-mirrors": [
++    {% for i in _docker_registry_mirrors -%}
++    "{{ i }}"{% if not loop.last %},{% endif %}
++    {%- endfor %}
++
++  ],
++  "exec-opts": [
++    "native.cgroupdriver=systemd"
++  ],
++  "default-ulimits": {
++    "nofile": {
++      "Name": "nofile",
++      "Hard": 65535,
++      "Soft": 65535
++    },
++    "nproc": {
++      "Name": "nproc",
++      "Hard": 4096,
++      "Soft": 4096
++    }
++  }
++}
+diff -Nrua playbooks/orchestration/openness-current/roles/kubernetes/common/tasks/main.yml playbooks/orchestration/openness-current-edit/roles/kubernetes/common/tasks/main.yml
+--- playbooks/orchestration/openness-current/roles/kubernetes/common/tasks/main.yml	2020-12-23 13:35:19.220593543 +0800
++++ playbooks/orchestration/openness-current-edit/roles/kubernetes/common/tasks/main.yml	2020-12-23 13:38:28.910607325 +0800
+@@ -9,9 +9,9 @@
+     description: Kubernetes repository
+     baseurl: "{{ _kubernetes_repository_url }}"
+     gpgkey: "{{ _kubernetes_repository_key }}"
+-    gpgcheck: yes
++    gpgcheck: no
+     enabled: true
+-    repo_gpgcheck: true
++    repo_gpgcheck: false
+   register: result
+   retries: "{{ number_of_retries }}"
+   until: result is succeeded
+diff -Nrua playbooks/orchestration/openness-current/roles/kubernetes/controlplane/templates/config.yaml.j2 playbooks/orchestration/openness-current-edit/roles/kubernetes/controlplane/templates/config.yaml.j2
+--- playbooks/orchestration/openness-current/roles/kubernetes/controlplane/templates/config.yaml.j2	2020-12-23 13:35:19.221593543 +0800
++++ playbooks/orchestration/openness-current-edit/roles/kubernetes/controlplane/templates/config.yaml.j2	2020-12-23 13:38:28.911607325 +0800
+@@ -24,3 +24,4 @@
+ controllerManager:
+   extraArgs:
+     terminated-pod-gc-threshold: "600"
++imageRepository: "registry.aliyuncs.com/google_containers"
+diff -Nrua playbooks/orchestration/openness-current/roles/kubernetes/helm/tasks/main.yml playbooks/orchestration/openness-current-edit/roles/kubernetes/helm/tasks/main.yml
+--- playbooks/orchestration/openness-current/roles/kubernetes/helm/tasks/main.yml	2020-12-23 13:35:19.222593543 +0800
++++ playbooks/orchestration/openness-current-edit/roles/kubernetes/helm/tasks/main.yml	2020-12-23 13:38:28.912607325 +0800
+@@ -55,3 +55,10 @@
+       path: "{{ helm_tmp_dir.path }}/linux-amd64"
+       state: absent
+   when: (not helm_bin.stat.exists) or (helm_bin.stat.exists and (grep_helm_version.rc == 1))
++
++- name: remove default helm stable repo
++  command: "helm repo remove stable"
++  ignore_errors: yes
++
++- name: add stable repo for helm
++  command: "helm repo add stable https://kubernetes.oss-cn-hangzhou.aliyuncs.com/charts"
+diff -Nrua playbooks/orchestration/openness-current/roles/machine_setup/os_setup/tasks/install_base_os_packages.yml playbooks/orchestration/openness-current-edit/roles/machine_setup/os_setup/tasks/install_base_os_packages.yml
+--- playbooks/orchestration/openness-current/roles/machine_setup/os_setup/tasks/install_base_os_packages.yml	2020-12-23 13:35:19.222593543 +0800
++++ playbooks/orchestration/openness-current-edit/roles/machine_setup/os_setup/tasks/install_base_os_packages.yml	2020-12-23 13:38:28.916607326 +0800
+@@ -5,13 +5,14 @@
+ 
+ - debug:
+     msg: "Installing the following packages: {{ os_yum_base_packages }}"
+-- name: install IUS repository
+-  yum:
+-    name: https://repo.ius.io/ius-release-el7.rpm
+-    state: present
++#- name: install IUS repository
++#  yum:
++    #name: https://repo.ius.io/ius-release-el7.rpm
++#    name: https://mirrors.tuna.tsinghua.edu.cn/ius/ius-release-el7.rpm
++#    state: present
+ - name: install base OS rpm packages
+   yum:
+     name: "{{ os_yum_base_packages }}"
+     state: present
+-    enablerepo: ius-archive
++#    enablerepo: ius-archive
+     skip_broken: yes
+diff -Nrua playbooks/orchestration/openness-current/roles/machine_setup/vca_host_setup/defaults/main.yml playbooks/orchestration/openness-current-edit/roles/machine_setup/vca_host_setup/defaults/main.yml
+--- playbooks/orchestration/openness-current/roles/machine_setup/vca_host_setup/defaults/main.yml	2020-12-23 13:35:19.223593543 +0800
++++ playbooks/orchestration/openness-current-edit/roles/machine_setup/vca_host_setup/defaults/main.yml	2020-12-23 13:38:28.916607326 +0800
+@@ -8,11 +8,15 @@
+ 
+ _vca_download_files:
+     - https://github.com/OpenVisualCloud/VCAC-SW/archive/VCAC-A_R4.tar.gz
+-    - http://vault.centos.org/7.4.1708/updates/Source/SPackages/kernel-3.10.0-693.17.1.el7.src.rpm
+-    - https://mirrors.edge.kernel.org/pub/linux/kernel/v4.x/linux-4.19.97.tar.xz
++    #- http://vault.centos.org/7.4.1708/updates/Source/SPackages/kernel-3.10.0-693.17.1.el7.src.rpm
++    - https://mirrors.tuna.tsinghua.edu.cn/centos-vault/7.4.1708/updates/Source/SPackages/kernel-3.10.0-693.17.1.el7.src.rpm
++    #- https://mirrors.edge.kernel.org/pub/linux/kernel/v4.x/linux-4.19.97.tar.xz
++    - https://mirrors.tuna.tsinghua.edu.cn/kernel/v4.x/linux-4.19.97.tar.xz
+     - https://cgit.freedesktop.org/drm/drm-firmware/tree/i915/kbl_dmc_ver1_04.bin
+-    - https://files.pythonhosted.org/packages/62/20/4d43e141b5bc426ba38274933ef8e76e85c7adea2c321ecf9ebf7421cedf/numpy-1.18.1-cp36-cp36m-manylinux1_x86_64.whl
+-    - https://files.pythonhosted.org/packages/c0/a9/9828dfaf93f40e190ebfb292141df6b7ea1a2d57b46263e757f52be8589f/opencv_python-4.1.2.30-cp36-cp36m-manylinux1_x86_64.whl # noqa 204
++    #- https://files.pythonhosted.org/packages/62/20/4d43e141b5bc426ba38274933ef8e76e85c7adea2c321ecf9ebf7421cedf/numpy-1.18.1-cp36-cp36m-manylinux1_x86_64.whl
++    - https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/62/20/4d43e141b5bc426ba38274933ef8e76e85c7adea2c321ecf9ebf7421cedf/numpy-1.18.1-cp36-cp36m-manylinux1_x86_64.whl
++    #- https://files.pythonhosted.org/packages/c0/a9/9828dfaf93f40e190ebfb292141df6b7ea1a2d57b46263e757f52be8589f/opencv_python-4.1.2.30-cp36-cp36m-manylinux1_x86_64.whl # noqa 204
++    - https://pypi.tuna.tsinghua.edu.cn/packages/c0/a9/9828dfaf93f40e190ebfb292141df6b7ea1a2d57b46263e757f52be8589f/opencv_python-4.1.2.30-cp36-cp36m-manylinux1_x86_64.whl
+ 
+ _vca_rpm_files:
+     - kernel-3.10.0_1.*.VCA+-1.x86_64
+diff -Nrua playbooks/orchestration/openness-current/roles/machine_setup/vca_host_setup/tasks/main.yml playbooks/orchestration/openness-current-edit/roles/machine_setup/vca_host_setup/tasks/main.yml
+--- playbooks/orchestration/openness-current/roles/machine_setup/vca_host_setup/tasks/main.yml	2020-12-23 13:35:19.224593543 +0800
++++ playbooks/orchestration/openness-current-edit/roles/machine_setup/vca_host_setup/tasks/main.yml	2020-12-23 13:38:28.917607326 +0800
+@@ -54,6 +54,19 @@
+   until: result is succeeded
+   delay: "{{ retry_delay }}"
+ 
++- name: replace the Dockerfile yum and apt source repo
++  shell: |
++    for i in `grep -rn "apt-get update" /home/vca|awk -F ":" '{ print $1 }' |grep -i "dockerfile" |uniq`; do sed -i 's@apt-get update@sed -i 's#archive.ubuntu.com#mirrors.tuna.tsinghua.edu.cn#' /etc/apt/sources.list \&\& &@g' $i; done
++
++    for i in `grep -rn "yum -y install" /home/vca|awk -F ":" '{ print $1 }' |grep -i "dockerfile" |uniq |grep -v "centos8"`; do sed -i '0,/yum -y install/s/yum -y install/mv \/etc\/yum.repos.d\/CentOS-Base.repo \/etc\/yum.repos.d\/CentOS-Base.repo.bak  \&\& curl -o \/etc\/yum.repos.d\/CentOS-Base.repo http:\/\/mirrors.cloud.tencent.com\/repo\/centos7_base.repo \&\& &/' $i; done
++
++    touch /tmp/Do_Dockerfile_Change
++
++  args:
++    chdir: /home/vca
++    executable: /bin/bash
++    creates: /tmp/Do_Dockerfile_Change
++
+ - name: build Host Kernel and VCA Driver
+   command: "{{ _vca_dest }}/VCAC-A/Intel_Media_Analytics_Host/scripts/build.sh -c -o centos7"
+   args:
+diff -Nrua playbooks/orchestration/openness-current/roles/machine_setup/vca_node_setup/tasks/configure_vca_nodes.yml playbooks/orchestration/openness-current-edit/roles/machine_setup/vca_node_setup/tasks/configure_vca_nodes.yml
+--- playbooks/orchestration/openness-current/roles/machine_setup/vca_node_setup/tasks/configure_vca_nodes.yml	2020-12-23 13:35:19.224593543 +0800
++++ playbooks/orchestration/openness-current-edit/roles/machine_setup/vca_node_setup/tasks/configure_vca_nodes.yml	2020-12-23 13:38:28.917607326 +0800
+@@ -66,9 +66,15 @@
+       command: "ssh {{ vca_node_ip }} mkdir -p /root/.docker/"
+     - name: scp config to node
+       command: "scp /root/.docker/config.json {{ vca_node_ip }}:/root/.docker/config.json"
+-    - name: install docker & kubernetes on VCA node
+-      command: "ssh {{ vca_node_ip }} ./{{ item }}"
+-      with_items:
+-        - install_docker.sh
+-        - install_kubernetes.sh
++    - name: install docker on VCA node
++      command: "ssh {{ vca_node_ip }} ./install_docker.sh"
++      changed_when: true
++    - name: scp docker daemon.json
++      command: "scp /etc/docker/daemon.json {{ vca_node_ip }}:/etc/docker/daemon.json"
++    - name: restart VCA node docker
++      shell: ssh {{ vca_node_ip }} "systemctl daemon-reload && systemctl restart docker"
++      args:
++        executable: /bin/bash
++    - name: install kubernetes on VCA node
++      command: "ssh {{ vca_node_ip }} ./install_kubernetes.sh"
+       changed_when: true
+diff -Nrua playbooks/orchestration/openness-current/roles/machine_setup/vca_node_setup/templates/install_docker.sh.j2 playbooks/orchestration/openness-current-edit/roles/machine_setup/vca_node_setup/templates/install_docker.sh.j2
+--- playbooks/orchestration/openness-current/roles/machine_setup/vca_node_setup/templates/install_docker.sh.j2	2020-12-23 13:35:19.225593543 +0800
++++ playbooks/orchestration/openness-current-edit/roles/machine_setup/vca_node_setup/templates/install_docker.sh.j2	2020-12-23 13:38:28.917607326 +0800
+@@ -12,6 +12,7 @@
+ fi
+ 
+ 
++RUN sed -i s#archive.ubuntu.com#mirrors.ustc.edu.cn# /etc/apt/sources.list
+ apt-get install libseccomp2  iptables -y 
+ 
+ 
+diff -Nrua playbooks/orchestration/openness-current/roles/machine_setup/vca_node_setup/templates/install_kubernetes.sh.j2 playbooks/orchestration/openness-current-edit/roles/machine_setup/vca_node_setup/templates/install_kubernetes.sh.j2
+--- playbooks/orchestration/openness-current/roles/machine_setup/vca_node_setup/templates/install_kubernetes.sh.j2	2020-12-23 13:35:19.226593543 +0800
++++ playbooks/orchestration/openness-current-edit/roles/machine_setup/vca_node_setup/templates/install_kubernetes.sh.j2	2020-12-23 13:38:28.917607326 +0800
+@@ -31,13 +31,13 @@
+    exit 1
+ fi
+ 
+-curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
++curl -s https://mirrors.aliyun.com/kubernetes/apt/doc/apt-key.gpg | apt-key add -
+ if [ $? -ne 0 ]; then
+    echo "curl apt-key failed"
+    exit 1
+ fi
+ 
+-echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list
++echo "deb https://mirrors.cloud.tencent.com/kubernetes/apt kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list
+ if [ $? -ne 0 ]; then
+    echo "deb for kuberneters-xenial main failed"
+    exit 1
